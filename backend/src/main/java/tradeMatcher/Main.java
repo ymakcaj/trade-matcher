@@ -32,9 +32,6 @@ public class Main {
 
         // 3. Start the Javalin server
         Javalin app = Javalin.create(config -> {
-            config.plugins.enableCors(cors ->
-                    cors.add(it -> it.anyHost()));
-
             if (Main.class.getResource("/public") != null) {
                 // Serve pre-built frontend assets when they are bundled into the jar
                 config.staticFiles.add("/public");
@@ -49,6 +46,19 @@ public class Main {
                 }
             }
         }).start("0.0.0.0", port);
+
+        app.before(ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            ctx.header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization");
+            ctx.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        });
+
+        app.options("/*", ctx -> {
+            ctx.header("Access-Control-Allow-Origin", "*");
+            ctx.header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization");
+            ctx.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+            ctx.status(204);
+        });
 
         // 4. Define the HTTP "Command" Endpoint
         // This is how the user SUBMITS an order
