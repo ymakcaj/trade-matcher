@@ -33,12 +33,27 @@ function App() {
   };
 
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:7070/ws/orderbook');
+    const resolveWebSocketBase = () => {
+      const fallback = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:7070';
+      const raw = (process.env.REACT_APP_API_URL || fallback || 'http://localhost:7070').replace(/\/$/, '');
+
+      if (raw.startsWith('http://')) {
+        return `ws://${raw.substring('http://'.length)}`;
+      }
+      if (raw.startsWith('https://')) {
+        return `wss://${raw.substring('https://'.length)}`;
+      }
+      if (raw.startsWith('ws://') || raw.startsWith('wss://')) {
+        return raw;
+      }
+      return `ws://${raw}`;
+    };
+
+    const ws = new WebSocket(`${resolveWebSocketBase()}/ws/orderbook`);
 
     ws.onopen = () => {
       console.log('Connected to WebSocket');
     };
-cd 
     const appendTrades = (tradePayload) => {
       if (!Array.isArray(tradePayload) || !tradePayload.length) {
         return;
