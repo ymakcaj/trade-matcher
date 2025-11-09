@@ -1,0 +1,15 @@
+A B GoodTillCancel 101 50 1
+A B GoodTillCancel 100 75 2
+A S GoodTillCancel 103 40 3
+A S GoodTillCancel 102 30 4
+A B FillOrKill 102 20 5
+A S Market 0 40 6
+A B GoodTillCancel 103 50 7
+A S GoodTillCancel 101 15 8
+M 2 B 102 75
+A S GoodTillCancel 102 30 9
+A S GoodTillCancel 105 20 10
+A B FillAndKill 105 20 11
+A S GoodTillCancel 102 20 12
+A B GoodTillCancel 99 100 13
+R 2 2 0

@@ -1,0 +1,159 @@
+.App {
+  text-align: center;
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 20px;
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.App-header h1 {
+  margin: 0;
+}
+
+.App-header h2 {
+  margin: 8px 0 0;
+  font-weight: 400;
+  font-size: 1rem;
+}
+
+.reset-button {
+  background-color: #ffd447;
+  border: none;
+  color: #2f2f2f;
+  padding: 10px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  min-width: 100px;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.reset-button:hover:not(:disabled) {
+  background-color: #ffcb1f;
+  transform: translateY(-1px);
+}
+
+.reset-button:disabled {
+  background-color: #d8d8d8;
+  color: #7a7a7a;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+main {
+  display: flex;
+  flex-direction: row;
+}
+
+.left-panel, .right-panel {
+  width: 50%;
+  padding: 20px;
+}
+
+.order-form, .script-builder {
+  margin-bottom: 20px;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.script-uploader {
+  margin-bottom: 20px;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.script-uploader-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.info-button {
+  background: #444;
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.info-button:focus {
+  outline: 2px solid #007bff;
+  outline-offset: 2px;
+}
+
+.script-help {
+  text-align: left;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 12px;
+  margin: 12px 0;
+  font-size: 0.9rem;
+}
+
+.script-help ul {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.script-uploader-actions {
+    margin-top: 10px;
+}
+
+.button-like {
+    padding: 10px 15px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-right: 10px;
+}
+
+.button-like:hover {
+    background-color: #0056b3;
+}
+
+.order-form input, .order-form select, .script-builder input, .script-builder select {
+    margin: 5px;
+}
+
+.order-book, .trade-history, .event-log, .chart-container {
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  margin-bottom: 20px;
+}
+
+.side {
+  width: 50%;
+  float: left;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
+
+th {
+  background-color: #f2f2f2;
+}

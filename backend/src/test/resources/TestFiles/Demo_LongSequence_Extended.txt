@@ -1,0 +1,233 @@
+A B GoodTillCancel 101 50 1
+A B GoodTillCancel 100 75 2
+A S GoodTillCancel 103 40 3
+A S GoodTillCancel 102 30 4
+A B FillOrKill 102 20 5
+A S Market 0 40 6
+A B GoodTillCancel 103 50 7
+A S GoodTillCancel 101 15 8
+M 2 B 102 75
+A S GoodTillCancel 102 30 9
+A S GoodTillCancel 105 20 10
+A B FillAndKill 105 20 11
+A S GoodTillCancel 102 20 12
+A B GoodTillCancel 99 100 13
+R 2 0 0
+A B GoodTillCancel 104 30 14
+A S GoodTillCancel 104 25 15
+A B GoodTillCancel 103 40 16
+A S GoodTillCancel 103 60 17
+A B FillOrKill 102 35 18
+A S GoodTillCancel 100 25 19
+M 19 S 101 20
+A B GoodTillCancel 101 55 20
+A S GoodTillCancel 106 15 21
+A B Market 0 30 22
+A S GoodTillCancel 102 45 23
+A B GoodTillCancel 98 80 24
+A S GoodTillCancel 99 70 25
+M 24 B 100 65
+R 21 0 0
+A B GoodTillCancel 104 45 26
+A S GoodTillCancel 104 45 27
+A B GoodTillCancel 105 40 28
+A S GoodTillCancel 105 50 29
+A B GoodTillCancel 103 45 30
+M 29 S 104 35
+A S GoodTillCancel 107 25 31
+A B GoodTillCancel 102 55 32
+A S GoodTillCancel 102 50 33
+A B FillAndKill 103 40 34
+A S Market 0 30 35
+A B GoodTillCancel 101 60 36
+A S GoodTillCancel 101 60 37
+R 31 0 0
+A B GoodTillCancel 100 65 38
+A S GoodTillCancel 100 65 39
+A B GoodTillCancel 99 75 40
+A S GoodTillCancel 99 70 41
+A B FillOrKill 98 45 42
+A S GoodTillCancel 98 40 43
+M 42 B 99 40
+A B GoodTillCancel 97 80 44
+A S GoodTillCancel 97 85 45
+A B GoodTillCancel 96 90 46
+A S GoodTillCancel 96 95 47
+A B Market 0 50 48
+A S GoodTillCancel 95 60 49
+M 46 B 97 80
+A B GoodTillCancel 104 30 50
+A S GoodTillCancel 104 20 51
+A B GoodTillCancel 105 25 52
+A S GoodTillCancel 105 35 53
+A B GoodTillCancel 106 40 54
+A S GoodTillCancel 106 45 55
+R 50 0 0
+A B GoodTillCancel 107 30 56
+A S GoodTillCancel 107 30 57
+A B GoodTillCancel 108 35 58
+A S GoodTillCancel 108 40 59
+A B FillOrKill 109 20 60
+A S Market 0 25 61
+A B GoodTillCancel 110 30 62
+A S GoodTillCancel 110 45 63
+A B GoodTillCancel 111 20 64
+A S GoodTillCancel 111 30 65
+M 62 B 109 28
+A B GoodTillCancel 112 35 66
+A S GoodTillCancel 112 40 67
+A B GoodTillCancel 113 45 68
+A S GoodTillCancel 113 50 69
+A B GoodTillCancel 114 55 70
+R 63 0 0
+A S GoodTillCancel 114 35 71
+A B GoodTillCancel 115 45 72
+A S GoodTillCancel 115 40 73
+A B Market 0 30 74
+A S GoodTillCancel 116 35 75
+A B FillAndKill 116 25 76
+M 75 S 115 30
+A B GoodTillCancel 117 40 77
+A S GoodTillCancel 117 45 78
+A B GoodTillCancel 118 50 79
+A S GoodTillCancel 118 55 80
+A B GoodTillCancel 119 60 81
+A S GoodTillCancel 119 50 82
+R 78 0 0
+A B GoodTillCancel 120 55 83
+A S GoodTillCancel 120 60 84
+A B Market 0 35 85
+A S Market 0 35 86
+A B GoodTillCancel 121 50 87
+A S GoodTillCancel 121 55 88
+M 87 B 122 48
+A B GoodTillCancel 123 40 89
+A S GoodTillCancel 123 45 90
+A B GoodTillCancel 124 35 91
+A S GoodTillCancel 124 38 92
+A B FillOrKill 125 30 93
+A S GoodTillCancel 125 32 94
+R 91 0 0
+A B GoodTillCancel 126 28 95
+A S GoodTillCancel 126 28 96
+A B GoodTillCancel 127 26 97
+A S GoodTillCancel 127 27 98
+A B GoodTillCancel 128 24 99
+A S GoodTillCancel 128 25 100
+M 99 B 127 26
+A B GoodTillCancel 129 28 101
+A S GoodTillCancel 129 28 102
+A B GoodTillCancel 130 32 103
+A S GoodTillCancel 130 33 104
+A B GoodTillCancel 131 36 105
+A S GoodTillCancel 131 37 106
+R 105 0 0
+A B GoodTillCancel 132 34 107
+A S GoodTillCancel 132 35 108
+A B Market 0 30 109
+A S Market 0 30 110
+A B GoodTillCancel 133 40 111
+A S GoodTillCancel 133 39 112
+M 111 B 134 38
+A B GoodTillCancel 135 36 113
+A S GoodTillCancel 135 37 114
+A B FillOrKill 136 34 115
+A S GoodTillCancel 136 35 116
+A B GoodTillCancel 137 32 117
+A S GoodTillCancel 137 33 118
+R 116 0 0
+A B GoodTillCancel 138 30 119
+A S GoodTillCancel 138 30 120
+A B GoodTillCancel 139 28 121
+A S GoodTillCancel 139 28 122
+A B GoodTillCancel 140 26 123
+A S GoodTillCancel 140 26 124
+M 123 B 139 25
+A B GoodTillCancel 141 24 125
+A S GoodTillCancel 141 24 126
+A B GoodTillCancel 142 22 127
+A S GoodTillCancel 142 22 128
+A B FillAndKill 143 20 129
+A S GoodTillCancel 143 21 130
+R 129 0 0
+A B GoodTillCancel 144 23 131
+A S GoodTillCancel 144 23 132
+A B GoodTillCancel 145 26 133
+A S GoodTillCancel 145 26 134
+A B GoodTillCancel 146 29 135
+A S GoodTillCancel 146 28 136
+M 135 B 145 27
+A B GoodTillCancel 147 32 137
+A S GoodTillCancel 147 31 138
+A B Market 0 35 139
+A S Market 0 35 140
+A B GoodTillCancel 148 34 141
+A S GoodTillCancel 148 33 142
+R 141 0 0
+A B GoodTillCancel 149 30 143
+A S GoodTillCancel 149 29 144
+A B GoodTillCancel 150 28 145
+A S GoodTillCancel 150 27 146
+A B FillOrKill 151 26 147
+A S GoodTillCancel 151 25 148
+M 148 S 150 24
+A B GoodTillCancel 152 24 149
+A S GoodTillCancel 152 23 150
+A B GoodTillCancel 153 22 151
+A S GoodTillCancel 153 21 152
+A B GoodTillCancel 154 20 153
+A S GoodTillCancel 154 20 154
+R 150 0 0
+A B GoodTillCancel 155 22 155
+A S GoodTillCancel 155 22 156
+A B GoodTillCancel 156 24 157
+A S GoodTillCancel 156 24 158
+A B Market 0 26 159
+A S Market 0 26 160
+M 155 B 154 23
+A B GoodTillCancel 157 28 161
+A S GoodTillCancel 157 28 162
+A B GoodTillCancel 158 32 163
+A S GoodTillCancel 158 32 164
+A B FillOrKill 159 34 165
+A S GoodTillCancel 159 34 166
+R 164 0 0
+A B GoodTillCancel 160 36 167
+A S GoodTillCancel 160 36 168
+A B GoodTillCancel 161 38 169
+A S GoodTillCancel 161 38 170
+A B GoodTillCancel 162 40 171
+A S GoodTillCancel 162 39 172
+M 171 B 161 37
+A B GoodTillCancel 163 36 173
+A S GoodTillCancel 163 35 174
+A B GoodTillCancel 164 34 175
+A S GoodTillCancel 164 33 176
+A B Market 0 32 177
+A S Market 0 31 178
+R 172 0 0
+A B GoodTillCancel 165 30 179
+A S GoodTillCancel 165 30 180
+A B GoodTillCancel 166 28 181
+A S GoodTillCancel 166 28 182
+A B FillAndKill 167 26 183
+A S GoodTillCancel 167 26 184
+M 181 B 165 27
+A B GoodTillCancel 168 25 185
+A S GoodTillCancel 168 25 186
+A B GoodTillCancel 169 24 187
+A S GoodTillCancel 169 24 188
+A B GoodTillCancel 170 23 189
+A S GoodTillCancel 170 23 190
+R 187 0 0
+A B GoodTillCancel 171 22 191
+A S GoodTillCancel 171 22 192
+A B GoodTillCancel 172 21 193
+A S GoodTillCancel 172 21 194
+A B Market 0 20 195
+A S Market 0 20 196
+M 195 B 171 21
+A B GoodTillCancel 173 22 197
+A S GoodTillCancel 173 22 198
+A B GoodTillCancel 174 23 199
+A S GoodTillCancel 174 23 200
