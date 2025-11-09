@@ -13,6 +13,37 @@ const appendWithLimit = (list, entry, limit) => {
   return next.length > limit ? next.slice(next.length - limit) : next;
 };
 
+const resolveApiBase = () => {
+  const fromEnv = process.env.REACT_APP_API_URL;
+  if (fromEnv && typeof fromEnv === 'string') {
+    return fromEnv.replace(/\/$/, '');
+  }
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin.replace(/\/$/, '');
+  }
+
+  return 'http://localhost:7070';
+};
+
+const toWebSocketBase = (httpBase) => {
+  if (!httpBase) {
+    return 'ws://localhost:7070';
+  }
+
+  if (httpBase.startsWith('https://')) {
+    return `wss://${httpBase.substring('https://'.length)}`;
+  }
+  if (httpBase.startsWith('http://')) {
+    return `ws://${httpBase.substring('http://'.length)}`;
+  }
+  if (httpBase.startsWith('ws://') || httpBase.startsWith('wss://')) {
+    return httpBase;
+  }
+
+  return `ws://${httpBase.replace(/^\/+/, '')}`;
+};
+
 function App() {
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [] });
   const [trades, setTrades] = useState([]);
@@ -20,6 +51,9 @@ function App() {
   const [priceHistory, setPriceHistory] = useState([]);
   const [isResetting, setIsResetting] = useState(false);
   // Store session data client-side so the UI can render timelines without extra round-trips.
+
+  const apiBase = useMemo(() => resolveApiBase(), []);
+  const wsBase = useMemo(() => toWebSocketBase(apiBase), [apiBase]);
 
   const recordOrderEvent = (event) => {
     setOrderEvents((prev) => appendWithLimit(prev, event, 2000));
@@ -33,23 +67,7 @@ function App() {
   };
 
   useEffect(() => {
-    const resolveWebSocketBase = () => {
-      const fallback = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:7070';
-      const raw = (process.env.REACT_APP_API_URL || fallback || 'http://localhost:7070').replace(/\/$/, '');
-
-      if (raw.startsWith('http://')) {
-        return `ws://${raw.substring('http://'.length)}`;
-      }
-      if (raw.startsWith('https://')) {
-        return `wss://${raw.substring('https://'.length)}`;
-      }
-      if (raw.startsWith('ws://') || raw.startsWith('wss://')) {
-        return raw;
-      }
-      return `ws://${raw}`;
-    };
-
-    const ws = new WebSocket(`${resolveWebSocketBase()}/ws/orderbook`);
+    const ws = new WebSocket(`${wsBase.replace(/\/$/, '')}/ws/orderbook`);
 
     ws.onopen = () => {
       console.log('Connected to WebSocket');
@@ -136,7 +154,7 @@ function App() {
     return () => {
       ws.close();
     };
-  }, []);
+  }, [wsBase]);
 
   const resetApplication = async () => {
     if (isResetting) {
@@ -147,7 +165,7 @@ function App() {
     clearClientState();
 
     try {
-      const response = await fetch('/api/reset', { method: 'POST' });
+      const response = await fetch(`${apiBase}/api/reset`, { method: 'POST' });
       if (!response.ok) {
         throw new Error(`Reset failed with status ${response.status}`);
       }
@@ -167,7 +185,7 @@ function App() {
       timestamp: Date.now(),
       order
     });
-    fetch('/api/order', {
+    fetch(`${apiBase}/api/order`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -219,7 +237,7 @@ function App() {
         });
       }
     });
-    fetch('/api/script', {
+  fetch(`${apiBase}/api/script`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

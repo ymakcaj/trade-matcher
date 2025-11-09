@@ -32,6 +32,9 @@ public class Main {
 
         // 3. Start the Javalin server
         Javalin app = Javalin.create(config -> {
+            config.plugins.enableCors(cors ->
+                    cors.add(it -> it.anyHost()));
+
             if (Main.class.getResource("/public") != null) {
                 // Serve pre-built frontend assets when they are bundled into the jar
                 config.staticFiles.add("/public");
