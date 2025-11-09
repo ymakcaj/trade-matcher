@@ -28,6 +28,8 @@ public class Main {
 
         engine.onTrades(tradesJson -> broadcastToClients(tradesJson));
 
+        int port = resolvePort();
+
         // 3. Start the Javalin server
         Javalin app = Javalin.create(config -> {
             if (Main.class.getResource("/public") != null) {
@@ -43,7 +45,7 @@ public class Main {
                     });
                 }
             }
-        }).start(7070);
+        }).start("0.0.0.0", port);
 
         // 4. Define the HTTP "Command" Endpoint
         // This is how the user SUBMITS an order
@@ -122,6 +124,18 @@ public class Main {
                 LOG.error("Failed to send payload to client", e);
             }
         });
+    }
+
+    private static int resolvePort() {
+        String envPort = System.getenv("PORT");
+        if (envPort != null && !envPort.isBlank()) {
+            try {
+                return Integer.parseInt(envPort.trim());
+            } catch (NumberFormatException ex) {
+                LOG.warn("Invalid PORT environment value '{}', falling back to 7070", envPort);
+            }
+        }
+        return 7070;
     }
 
     private static void executeScriptLine(MatchingEngine engine, String command) {
