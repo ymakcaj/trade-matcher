@@ -50,6 +50,7 @@ function App() {
   const [orderEvents, setOrderEvents] = useState([]);
   const [priceHistory, setPriceHistory] = useState([]);
   const [isResetting, setIsResetting] = useState(false);
+  const [resetToken, setResetToken] = useState(0);
   // Store session data client-side so the UI can render timelines without extra round-trips.
 
   const apiBase = useMemo(() => resolveApiBase(), []);
@@ -64,6 +65,7 @@ function App() {
     setTrades([]);
     setOrderEvents([]);
     setPriceHistory([]);
+    setResetToken((prev) => prev + 1);
   };
 
   useEffect(() => {
@@ -264,15 +266,15 @@ function App() {
       </header>
       <main>
         <div className="left-panel">
-          <OrderForm onSubmitOrder={handleOrderSubmit} />
-          <ScriptBuilder onSubmitScript={handleScriptSubmit} />
-          <ScriptUploader onSubmitScript={handleScriptSubmit} />
-          <OrderLog events={orderEvents} />
+          <OrderForm key={`order-form-${resetToken}`} onSubmitOrder={handleOrderSubmit} />
+          <ScriptBuilder key={`script-builder-${resetToken}`} onSubmitScript={handleScriptSubmit} />
+          <ScriptUploader key={`script-uploader-${resetToken}`} onSubmitScript={handleScriptSubmit} />
+          <OrderLog key={`order-log-${resetToken}`} events={orderEvents} />
         </div>
         <div className="right-panel">
-          <OrderBook orderBook={orderBook} />
-          <BestBidAskChart data={priceHistory} trades={trades} />
-          <TradeHistory trades={trades} />
+          <OrderBook key={`order-book-${resetToken}`} orderBook={orderBook} />
+          <BestBidAskChart key={`chart-${resetToken}`} data={priceHistory} trades={trades} />
+          <TradeHistory key={`trades-${resetToken}`} trades={trades} />
         </div>
       </main>
     </div>
