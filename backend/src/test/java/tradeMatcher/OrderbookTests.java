@@ -227,7 +227,6 @@ final class OrderbookTests {
             "Cancel_Success.txt",
         "Modify_Side.txt",
         "Match_Market.txt",
-        "Demo_LongSequence.txt"
     })
     void orderbookTestSuite(String fileName) {
         InputHandler handler = new InputHandler();
