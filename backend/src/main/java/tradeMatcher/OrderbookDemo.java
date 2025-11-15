@@ -20,6 +20,7 @@ public final class OrderbookDemo {
     private static final String VERBOSE_FLAG = "--verbose";
     private static final String VERBOSE_SHORT_FLAG = "-v";
     private static boolean verboseMode;
+    private static final PriceScaleRegistry PRICE_SCALES = PriceScaleProvider.getRegistry();
 
     private OrderbookDemo() {
     }
@@ -118,35 +119,54 @@ public final class OrderbookDemo {
             throw new IllegalArgumentException("Add command requires 6 tokens");
         }
 
-        Side side = parseSide(tokens[1]);
-        OrderType orderType = parseOrderType(tokens[2]);
-        int price = parseInt(tokens[3], "price");
+    OrderSide side = parseSide(tokens[1]);
+    ParsedOrderSpec spec = parseOrderSpec(tokens[2]);
+    double price = parseDouble(tokens[3], "price");
         int quantity = parseInt(tokens[4], "quantity");
         long orderId = parseOrderId(tokens[5]);
+
+    PriceScale scale = PRICE_SCALES.getScale("DEMO");
+    int bookPrice = spec.orderType() == OrderType.MARKET ? 0 : scale.toBookPrice(price);
+    int bookTrigger = (spec.orderType() == OrderType.STOP_MARKET || spec.orderType() == OrderType.STOP_LIMIT)
+        ? scale.toBookPrice(price)
+        : bookPrice;
 
         if (verboseMode) {
             System.out.printf("ORDER SUBMIT orderId=%d side=%s type=%s price=%d qty=%d%n",
                     orderId,
                     side,
-                    orderType,
+                    spec.orderType(),
                     price,
                     quantity);
         }
 
-        List<Trade> trades = orderbook.AddOrder(new Order(orderType, orderId, side, price, quantity));
+        Order order = new Order(
+                String.valueOf(orderId),
+                "demo-cli",
+                "DEMO",
+                side,
+                spec.orderType(),
+                spec.timeInForce(),
+                quantity,
+        bookPrice,
+        bookTrigger,
+                false,
+                quantity);
+
+        List<Trade> trades = orderbook.AddOrder(order);
         if (logTrades(orderbook, trades)) {
             return null;
         }
 
         List<OrderDetails> details = orderbook.GetOrderDetails();
-        boolean added = details.stream().anyMatch(order -> order.getOrderId() == orderId);
+        boolean added = details.stream().anyMatch(o -> o.getOrderId() == orderId);
         if (verboseMode || !added) {
             String status = added ? "ACCEPTED" : "REJECTED";
             System.out.printf("ORDER %s orderId=%d side=%s type=%s price=%d qty=%d%n",
                     status,
                     orderId,
                     side,
-                    orderType,
+                    spec.orderType(),
                     price,
                     quantity);
         }
@@ -171,11 +191,14 @@ public final class OrderbookDemo {
         }
 
         long orderId = parseOrderId(tokens[1]);
-        Side side = parseSide(tokens[2]);
-        int price = parseInt(tokens[3], "price");
+    OrderSide side = parseSide(tokens[2]);
+    double price = parseDouble(tokens[3], "price");
         int quantity = parseInt(tokens[4], "quantity");
 
-        List<Trade> trades = orderbook.ModifyOrder(new OrderModify(orderId, side, price, quantity));
+    PriceScale scale = PRICE_SCALES.getScale("DEMO");
+    int bookPrice = scale.toBookPrice(price);
+
+    List<Trade> trades = orderbook.ModifyOrder(new OrderModify(orderId, side, bookPrice, quantity));
         if (logTrades(orderbook, trades)) {
             return null;
         }
@@ -188,9 +211,9 @@ public final class OrderbookDemo {
             throw new IllegalArgumentException("Result command requires 3 numeric values");
         }
 
-        int total = parseInt(tokens[1], "total");
-        int bids = parseInt(tokens[2], "bids");
-        int asks = parseInt(tokens[3], "asks");
+    int total = parseInt(tokens[1], "total");
+    int bids = parseInt(tokens[2], "bids");
+    int asks = parseInt(tokens[3], "asks");
         return new ExpectedSnapshot(total, bids, asks);
     }
 
@@ -207,9 +230,9 @@ public final class OrderbookDemo {
         for (Trade trade : trades) {
             TradeInfo bid = Objects.requireNonNull(trade.getBidTrade(), "Missing bid trade info");
             TradeInfo ask = Objects.requireNonNull(trade.getAskTrade(), "Missing ask trade info");
-            int quantity = bid.getQuantity();
-            int price = bid.getPrice();
-            System.out.printf("TRADE qty=%d price=%d buyOrder=%d sellOrder=%d%n",
+        int quantity = bid.getQuantity();
+        double price = bid.getPrice();
+        System.out.printf("TRADE qty=%d price=%.4f buyOrder=%d sellOrder=%d%n",
                     quantity,
                     price,
                     bid.getOrderId(),
@@ -240,9 +263,9 @@ public final class OrderbookDemo {
             return;
         }
 
-        System.out.println("  Price    Quantity");
+        System.out.println("  Price      Quantity");
         for (LevelInfo level : levels) {
-            System.out.printf("  %5d    %8d%n", level.getPrice(), level.getQuantity());
+            System.out.printf("  %7.4f    %8d%n", level.getPrice(), level.getQuantity());
         }
     }
 
@@ -255,7 +278,7 @@ public final class OrderbookDemo {
 
         System.out.println("  Id    Side  Type           Price  Remaining");
         for (OrderDetails order : orders) {
-            System.out.printf("  %-5d %-5s %-14s %5d  %9d%n",
+        System.out.printf("  %-5d %-5s %-14s %7.4f  %9d%n",
                     order.getOrderId(),
                     order.getSide(),
                     order.getOrderType(),
@@ -283,21 +306,34 @@ public final class OrderbookDemo {
         }
     }
 
-    private static Side parseSide(String token) {
+    private static OrderSide parseSide(String token) {
         String normalized = token.toUpperCase(Locale.ROOT);
         return switch (normalized) {
-            case "B" -> Side.Buy;
-            case "S" -> Side.Sell;
+            case "B" -> OrderSide.BUY;
+            case "S" -> OrderSide.SELL;
             default -> throw new IllegalArgumentException("Unknown side: " + token);
         };
     }
 
-    private static OrderType parseOrderType(String token) {
-        try {
-            return OrderType.valueOf(token);
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("Unknown order type: " + token, ex);
+    private static ParsedOrderSpec parseOrderSpec(String token) {
+        if (token == null || token.isBlank()) {
+            throw new IllegalArgumentException("Order type token is required");
         }
+        String normalized = token.replace("_", "")
+                .replace("-", "")
+                .replace(" ", "")
+                .toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "MARKET" -> new ParsedOrderSpec(OrderType.MARKET, TimeInForce.IOC);
+            case "LIMIT" -> new ParsedOrderSpec(OrderType.LIMIT, TimeInForce.GTC);
+            case "STOPMARKET", "STOP" -> new ParsedOrderSpec(OrderType.STOP_MARKET, TimeInForce.IOC);
+            case "STOPLIMIT" -> new ParsedOrderSpec(OrderType.STOP_LIMIT, TimeInForce.GTC);
+            case "GOODTILLCANCEL", "GTC" -> new ParsedOrderSpec(OrderType.LIMIT, TimeInForce.GTC);
+            case "GOODFORDAY", "DAY" -> new ParsedOrderSpec(OrderType.LIMIT, TimeInForce.DAY);
+            case "FILLANDKILL", "IOC", "FAK" -> new ParsedOrderSpec(OrderType.LIMIT, TimeInForce.IOC);
+            case "FILLORKILL", "FOK" -> new ParsedOrderSpec(OrderType.LIMIT, TimeInForce.FOK);
+            default -> throw new IllegalArgumentException("Unsupported order type token: " + token);
+        };
     }
 
     private static int parseInt(String token, String label) {
@@ -306,6 +342,14 @@ public final class OrderbookDemo {
             throw new IllegalArgumentException("Value too large for " + label + ": " + token);
         }
         return (int) value;
+    }
+
+    private static double parseDouble(String token, String label) {
+        try {
+            return Double.parseDouble(token);
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("Invalid decimal value for " + label + ": " + token, ex);
+        }
     }
 
     private static long parseOrderId(String token) {
@@ -334,5 +378,8 @@ public final class OrderbookDemo {
     }
 
     private record ExpectedSnapshot(int total, int bids, int asks) {
+    }
+
+    private record ParsedOrderSpec(OrderType orderType, TimeInForce timeInForce) {
     }
 }

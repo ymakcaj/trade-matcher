@@ -2,8 +2,9 @@ package tradeMatcher;
 
 import tradeMatcher.Order;
 import tradeMatcher.OrderModify;
+import tradeMatcher.OrderSide;
 import tradeMatcher.OrderType;
-import tradeMatcher.Side;
+import tradeMatcher.TimeInForce;
 import tradeMatcher.Orderbook;
 import tradeMatcher.OrderbookLevelInfos;
 
@@ -29,7 +30,7 @@ final class OrderbookTests {
         Modify
     }
 
-    private record Information(ActionType type, OrderType orderType, Side side, int price, int quantity, long orderId) {
+    private record Information(ActionType type, OrderType orderType, TimeInForce timeInForce, OrderSide side, double price, int quantity, long orderId) {
     }
 
     private record Result(int allCount, int bidCount, int askCount) {
@@ -102,25 +103,25 @@ final class OrderbookTests {
             char code = Character.toUpperCase(tokens[0].charAt(0));
 
             if (code == 'A') {
-                Side side = parseSide(tokens[1]);
-                OrderType orderType = parseOrderType(tokens[2]);
-                int price = parsePrice(tokens[3]);
+                OrderSide side = parseSide(tokens[1]);
+                ParsedOrderSpec spec = parseOrderSpec(tokens[2]);
+                double price = parsePrice(tokens[3]);
                 int quantity = parseQuantity(tokens[4]);
                 long orderId = parseOrderId(tokens[5]);
-                return new Information(ActionType.Add, orderType, side, price, quantity, orderId);
+                return new Information(ActionType.Add, spec.orderType(), spec.timeInForce(), side, price, quantity, orderId);
             }
 
             if (code == 'M') {
                 long orderId = parseOrderId(tokens[1]);
-                Side side = parseSide(tokens[2]);
-                int price = parsePrice(tokens[3]);
+                OrderSide side = parseSide(tokens[2]);
+                double price = parsePrice(tokens[3]);
                 int quantity = parseQuantity(tokens[4]);
-                return new Information(ActionType.Modify, null, side, price, quantity, orderId);
+                return new Information(ActionType.Modify, null, null, side, price, quantity, orderId);
             }
 
             if (code == 'C') {
                 long orderId = parseOrderId(tokens[1]);
-                return new Information(ActionType.Cancel, null, null, 0, 0, orderId);
+                return new Information(ActionType.Cancel, null, null, null, 0, 0, orderId);
             }
 
             throw new IllegalStateException("Unsupported action type: " + tokens[0]);
@@ -146,25 +147,42 @@ final class OrderbookTests {
             return tokens;
         }
 
-        private Side parseSide(String token) {
+        private OrderSide parseSide(String token) {
             String normalized = token.toUpperCase(Locale.ROOT);
             return switch (normalized) {
-                case "B" -> Side.Buy;
-                case "S" -> Side.Sell;
+                case "B" -> OrderSide.BUY;
+                case "S" -> OrderSide.SELL;
                 default -> throw new IllegalStateException("Unknown side: " + token);
             };
         }
 
-        private OrderType parseOrderType(String token) {
-            try {
-                return OrderType.valueOf(token);
-            } catch (IllegalArgumentException ex) {
-                throw new IllegalStateException("Unknown order type: " + token, ex);
+        private ParsedOrderSpec parseOrderSpec(String token) {
+            if (token == null || token.isBlank()) {
+                throw new IllegalStateException("Order type token is required");
             }
+            String normalized = token.replace("_", "")
+                    .replace("-", "")
+                    .replace(" ", "")
+                    .toUpperCase(Locale.ROOT);
+            return switch (normalized) {
+                case "MARKET" -> new ParsedOrderSpec(OrderType.MARKET, TimeInForce.IOC);
+                case "LIMIT" -> new ParsedOrderSpec(OrderType.LIMIT, TimeInForce.GTC);
+                case "STOPMARKET", "STOP" -> new ParsedOrderSpec(OrderType.STOP_MARKET, TimeInForce.IOC);
+                case "STOPLIMIT" -> new ParsedOrderSpec(OrderType.STOP_LIMIT, TimeInForce.GTC);
+                case "GOODTILLCANCEL", "GTC" -> new ParsedOrderSpec(OrderType.LIMIT, TimeInForce.GTC);
+                case "GOODFORDAY", "DAY" -> new ParsedOrderSpec(OrderType.LIMIT, TimeInForce.DAY);
+                case "FILLANDKILL", "IOC", "FAK" -> new ParsedOrderSpec(OrderType.LIMIT, TimeInForce.IOC);
+                case "FILLORKILL", "FOK" -> new ParsedOrderSpec(OrderType.LIMIT, TimeInForce.FOK);
+                default -> throw new IllegalStateException("Unsupported order type token: " + token);
+            };
         }
 
-        private int parsePrice(String token) {
-            return toInt(token, "price");
+        private double parsePrice(String token) {
+            try {
+                return Double.parseDouble(token);
+            } catch (NumberFormatException ex) {
+                throw new IllegalStateException("Invalid price: " + token, ex);
+            }
         }
 
         private int parseQuantity(String token) {
@@ -218,20 +236,38 @@ final class OrderbookTests {
         try (Orderbook orderbook = new Orderbook()) {
             for (Information action : parsed.actions()) {
                 switch (action.type()) {
-                    case Add -> orderbook.AddOrder(new Order(
-                            Objects.requireNonNull(action.orderType(), "Missing order type"),
-                            action.orderId(),
-                            Objects.requireNonNull(action.side(), "Missing side"),
-                            action.price(),
-                            action.quantity()));
+            case Add -> {
+            OrderType orderType = Objects.requireNonNull(action.orderType(), "Missing order type");
+            TimeInForce timeInForce = Objects.requireNonNull(action.timeInForce(), "Missing time in force");
+            PriceScale scale = PriceScaleProvider.getRegistry().getScale("TEST");
+            int bookPrice = orderType == OrderType.MARKET ? 0 : scale.toBookPrice(action.price());
+            int bookTrigger = (orderType == OrderType.STOP_MARKET || orderType == OrderType.STOP_LIMIT)
+                ? scale.toBookPrice(action.price())
+                : bookPrice;
+
+            orderbook.AddOrder(new Order(
+                String.valueOf(action.orderId()),
+                "unit-test",
+                "TEST",
+                Objects.requireNonNull(action.side(), "Missing side"),
+                orderType,
+                timeInForce,
+                action.quantity(),
+                bookPrice,
+                bookTrigger,
+                false,
+                action.quantity()));
+            }
                     case Modify -> orderbook.ModifyOrder(new OrderModify(
                             action.orderId(),
-                            Objects.requireNonNull(action.side(), "Missing side"),
-                            action.price(),
+                Objects.requireNonNull(action.side(), "Missing side"),
+                PriceScaleProvider.getRegistry().getScale("TEST").toBookPrice(action.price()),
                             action.quantity()));
                     case Cancel -> orderbook.CancelOrder(action.orderId());
                     default -> throw new IllegalStateException("Unsupported action: " + action.type());
                 }
+
+                        // Removed misplaced record declaration
             }
 
             OrderbookLevelInfos infos = orderbook.GetOrderInfos();
@@ -242,4 +278,7 @@ final class OrderbookTests {
             Assertions.assertEquals(expected.askCount(), infos.GetAsks().size(), "Unexpected ask count");
         }
     }
+    
+        private record ParsedOrderSpec(OrderType orderType, TimeInForce timeInForce) {
+        }
 }

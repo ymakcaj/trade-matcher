@@ -5,12 +5,12 @@ package tradeMatcher;
  */
 public final class OrderDetails {
     private final long orderId;
-    private final Side side;
+    private final OrderSide side;
     private final OrderType orderType;
-    private final int price;
-    private final int remainingQuantity;
+    private final double price;
+    private final long remainingQuantity;
 
-    public OrderDetails(long orderId, Side side, OrderType orderType, int price, int remainingQuantity) {
+    public OrderDetails(long orderId, OrderSide side, OrderType orderType, double price, long remainingQuantity) {
         this.orderId = orderId;
         this.side = side;
         this.orderType = orderType;
@@ -22,7 +22,7 @@ public final class OrderDetails {
         return orderId;
     }
 
-    public Side getSide() {
+    public OrderSide getSide() {
         return side;
     }
 
@@ -30,11 +30,11 @@ public final class OrderDetails {
         return orderType;
     }
 
-    public int getPrice() {
+    public double getPrice() {
         return price;
     }
 
-    public int getRemainingQuantity() {
+    public long getRemainingQuantity() {
         return remainingQuantity;
     }
 }

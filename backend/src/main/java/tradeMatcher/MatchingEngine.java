@@ -25,17 +25,19 @@ public class MatchingEngine {
     public void processOrder(Order order) {
         // This is a simplified example. You would have more complex logic here
         // to handle different order types (add, cancel, modify).
-        LOG.info("Processing order: type={}, side={}, price={}, qty={}, id={}",
-                order.GetOrderType(), order.GetSide(), order.GetPrice(),
+    PriceScale scale = PriceScaleProvider.getRegistry().getScale(order.getTicker());
+    double displayPrice = scale.toDisplayPrice((int) Math.round(order.GetPrice()));
+    LOG.info("Processing order: type={}, side={}, price={}, qty={}, id={}",
+        order.GetOrderType(), order.GetSide(), displayPrice,
                 order.GetInitialQuantity(), order.GetOrderId());
         List<Trade> trades = orderbook.AddOrder(order);
         broadcastOrderBook();
         broadcastTrades(trades, "process");
     }
 
-    public void modifyOrder(long orderId, Side side, int price, int quantity) {
-        LOG.info("Modifying order: id={}, side={}, price={}, qty={}", orderId, side, price, quantity);
-        OrderModify modify = new OrderModify(orderId, side, price, quantity);
+    public void modifyOrder(long orderId, OrderSide side, int price, int quantity) {
+    LOG.info("Modifying order: id={}, side={}, price={}, qty={}", orderId, side, price, quantity);
+    OrderModify modify = new OrderModify(orderId, side, price, quantity);
         List<Trade> trades = orderbook.ModifyOrder(modify);
         broadcastOrderBook();
         broadcastTrades(trades, "modify");

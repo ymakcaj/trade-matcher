@@ -51,6 +51,15 @@ public final class Orderbook implements AutoCloseable {
         ordersPruneThread.start();
     }
 
+    private static int priceKey(Order order) {
+        return (int) Math.round(order.GetPrice());
+    }
+
+    private static double displayPrice(int price, Order order) {
+        PriceScale scale = PriceScaleProvider.getRegistry().getScale(order.getTicker());
+        return scale.toDisplayPrice(price);
+    }
+
     private void PruneGoodForDayOrders() {
         final ZoneId zone = ZoneId.systemDefault();
 
@@ -89,7 +98,7 @@ public final class Orderbook implements AutoCloseable {
             ordersLock.lock();
             try {
                 for (OrderEntry entry : orders.values()) {
-                    if (entry.order.GetOrderType() == OrderType.GoodForDay) {
+                    if (entry.order.GetTimeInForce() == TimeInForce.DAY) {
                         orderIds.add(entry.order.GetOrderId());
                     }
                 }
@@ -121,12 +130,12 @@ public final class Orderbook implements AutoCloseable {
         }
 
         Order order = entry.order;
-        NavigableMap<Integer, Deque<Order>> book = order.GetSide() == Side.Sell ? asks : bids;
-        Deque<Order> ordersAtPrice = book.get(order.GetPrice());
+    NavigableMap<Integer, Deque<Order>> book = order.GetSide() == OrderSide.SELL ? asks : bids;
+        Deque<Order> ordersAtPrice = book.get(priceKey(order));
         if (ordersAtPrice != null) {
             ordersAtPrice.remove(order);
             if (ordersAtPrice.isEmpty()) {
-                book.remove(order.GetPrice());
+                book.remove(priceKey(order));
             }
         }
 
@@ -134,11 +143,11 @@ public final class Orderbook implements AutoCloseable {
     }
 
     private void OnOrderCancelled(Order order) {
-        UpdateLevelData(order.GetPrice(), order.GetRemainingQuantity(), LevelData.Action.Remove);
+        UpdateLevelData(priceKey(order), (int) order.GetRemainingQuantity(), LevelData.Action.Remove);
     }
 
     private void OnOrderAdded(Order order) {
-        UpdateLevelData(order.GetPrice(), order.GetInitialQuantity(), LevelData.Action.Add);
+        UpdateLevelData(priceKey(order), (int) order.GetInitialQuantity(), LevelData.Action.Add);
     }
 
     private void OnOrderMatched(int price, int quantity, boolean isFullyFilled) {
@@ -169,14 +178,14 @@ public final class Orderbook implements AutoCloseable {
         }
     }
 
-    private boolean CanFullyFill(Side side, int price, int quantity) {
+    private boolean CanFullyFill(OrderSide side, int price, int quantity) {
         if (!CanMatch(side, price)) {
             return false;
         }
 
         Integer threshold = null;
 
-        if (side == Side.Buy) {
+        if (side == OrderSide.BUY) {
             Map.Entry<Integer, Deque<Order>> entry = asks.firstEntry();
             if (entry != null) {
                 threshold = entry.getKey();
@@ -193,18 +202,18 @@ public final class Orderbook implements AutoCloseable {
             LevelData level = dataEntry.getValue();
 
             if (threshold != null) {
-                if (side == Side.Buy && threshold > levelPrice) {
+                if (side == OrderSide.BUY && threshold > levelPrice) {
                     continue;
                 }
-                if (side == Side.Sell && threshold < levelPrice) {
+                if (side == OrderSide.SELL && threshold < levelPrice) {
                     continue;
                 }
             }
 
-            if (side == Side.Buy && levelPrice > price) {
+            if (side == OrderSide.BUY && levelPrice > price) {
                 continue;
             }
-            if (side == Side.Sell && levelPrice < price) {
+            if (side == OrderSide.SELL && levelPrice < price) {
                 continue;
             }
 
@@ -218,8 +227,8 @@ public final class Orderbook implements AutoCloseable {
         return false;
     }
 
-    private boolean CanMatch(Side side, int price) {
-        if (side == Side.Buy) {
+    private boolean CanMatch(OrderSide side, int price) {
+        if (side == OrderSide.BUY) {
             Map.Entry<Integer, Deque<Order>> bestAsk = asks.firstEntry();
             if (bestAsk == null) {
                 return false;
@@ -258,7 +267,7 @@ public final class Orderbook implements AutoCloseable {
                 Order bid = bidOrders.peekFirst();
                 Order ask = askOrders.peekFirst();
 
-                int quantity = Math.min(bid.GetRemainingQuantity(), ask.GetRemainingQuantity());
+                int quantity = (int) Math.min(bid.GetRemainingQuantity(), ask.GetRemainingQuantity());
 
                 bid.Fill(quantity);
                 ask.Fill(quantity);
@@ -274,11 +283,11 @@ public final class Orderbook implements AutoCloseable {
                 }
 
                 trades.add(new Trade(
-                    new TradeInfo(bid.GetOrderId(), bid.GetPrice(), quantity),
-                    new TradeInfo(ask.GetOrderId(), ask.GetPrice(), quantity)));
+                    new TradeInfo(bid.GetOrderId(), displayPrice(priceKey(bid), bid), quantity),
+                    new TradeInfo(ask.GetOrderId(), displayPrice(priceKey(ask), ask), quantity)));
 
-                OnOrderMatched(bid.GetPrice(), quantity, bid.IsFilled());
-                OnOrderMatched(ask.GetPrice(), quantity, ask.IsFilled());
+                OnOrderMatched(priceKey(bid), quantity, bid.IsFilled());
+                OnOrderMatched(priceKey(ask), quantity, ask.IsFilled());
             }
 
             if (bidOrders.isEmpty()) {
@@ -295,7 +304,7 @@ public final class Orderbook implements AutoCloseable {
         if (!bids.isEmpty()) {
             Deque<Order> ordersAtPrice = bids.firstEntry().getValue();
             Order order = ordersAtPrice.peekFirst();
-            if (order != null && order.GetOrderType() == OrderType.FillAndKill) {
+            if (order != null && order.GetTimeInForce() == TimeInForce.IOC) {
                 CancelOrderInternal(order.GetOrderId());
             }
         }
@@ -303,7 +312,7 @@ public final class Orderbook implements AutoCloseable {
         if (!asks.isEmpty()) {
             Deque<Order> ordersAtPrice = asks.firstEntry().getValue();
             Order order = ordersAtPrice.peekFirst();
-            if (order != null && order.GetOrderType() == OrderType.FillAndKill) {
+            if (order != null && order.GetTimeInForce() == TimeInForce.IOC) {
                 CancelOrderInternal(order.GetOrderId());
             }
         }
@@ -318,11 +327,11 @@ public final class Orderbook implements AutoCloseable {
                 return List.of();
             }
 
-            if (order.GetOrderType() == OrderType.Market) {
-                if (order.GetSide() == Side.Buy && !asks.isEmpty()) {
+            if (order.GetOrderType() == OrderType.MARKET) {
+                if (order.GetSide() == OrderSide.BUY && !asks.isEmpty()) {
                     int worstAsk = asks.lastEntry().getKey();
                     order.ToGoodTillCancel(worstAsk);
-                } else if (order.GetSide() == Side.Sell && !bids.isEmpty()) {
+                } else if (order.GetSide() == OrderSide.SELL && !bids.isEmpty()) {
                     int worstBid = bids.lastEntry().getKey();
                     order.ToGoodTillCancel(worstBid);
                 } else {
@@ -330,19 +339,20 @@ public final class Orderbook implements AutoCloseable {
                 }
             }
 
-            if (order.GetOrderType() == OrderType.FillAndKill && !CanMatch(order.GetSide(), order.GetPrice())) {
+            if (order.GetTimeInForce() == TimeInForce.IOC && !CanMatch(order.GetSide(), (int) Math.round(order.GetPrice()))) {
                 return List.of();
             }
 
-            if (order.GetOrderType() == OrderType.FillOrKill && !CanFullyFill(order.GetSide(), order.GetPrice(), order.GetInitialQuantity())) {
+            if (order.GetTimeInForce() == TimeInForce.FOK && !CanFullyFill(order.GetSide(), (int) Math.round(order.GetPrice()), (int) order.GetInitialQuantity())) {
                 return List.of();
             }
 
             Deque<Order> priceOrders;
-            if (order.GetSide() == Side.Buy) {
-                priceOrders = bids.computeIfAbsent(order.GetPrice(), __ -> new ArrayDeque<>());
+            int priceKey = (int) Math.round(order.GetPrice());
+            if (order.GetSide() == OrderSide.BUY) {
+                priceOrders = bids.computeIfAbsent(priceKey, __ -> new ArrayDeque<>());
             } else {
-                priceOrders = asks.computeIfAbsent(order.GetPrice(), __ -> new ArrayDeque<>());
+                priceOrders = asks.computeIfAbsent(priceKey, __ -> new ArrayDeque<>());
             }
 
             priceOrders.addLast(order);
@@ -367,6 +377,7 @@ public final class Orderbook implements AutoCloseable {
 
     public List<Trade> ModifyOrder(OrderModify order) {
         OrderType orderType;
+        TimeInForce timeInForce;
 
         ordersLock.lock();
         try {
@@ -376,12 +387,13 @@ public final class Orderbook implements AutoCloseable {
             }
 
             orderType = entry.order.GetOrderType();
+            timeInForce = entry.order.GetTimeInForce();
         } finally {
             ordersLock.unlock();
         }
 
         CancelOrder(order.GetOrderId());
-        return AddOrder(order.ToOrderPointer(orderType));
+        return AddOrder(order.ToOrderPointer(orderType, timeInForce));
     }
 
     public int Size() {
@@ -432,7 +444,7 @@ public final class Orderbook implements AutoCloseable {
                     order.GetOrderId(),
                     order.GetSide(),
                     order.GetOrderType(),
-                    order.GetPrice(),
+                    displayPrice(priceKey(order), order),
                     order.GetRemainingQuantity()));
             }
         }
@@ -443,7 +455,9 @@ public final class Orderbook implements AutoCloseable {
         for (Order order : orders) {
             quantity += order.GetRemainingQuantity();
         }
-        return new LevelInfo(price, quantity);
+        Order sample = orders.peekFirst();
+        double displayPrice = sample != null ? displayPrice(price, sample) : price;
+        return new LevelInfo(displayPrice, quantity);
     }
 
     @Override

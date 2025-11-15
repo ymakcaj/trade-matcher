@@ -2,10 +2,10 @@ package tradeMatcher;
 
 public final class TradeInfo {
     private final long orderId;
-    private final int price;
+    private final double price;
     private final int quantity;
 
-    public TradeInfo(long orderId, int price, int quantity) {
+    public TradeInfo(long orderId, double price, int quantity) {
         this.orderId = orderId;
         this.price = price;
         this.quantity = quantity;
@@ -15,7 +15,7 @@ public final class TradeInfo {
         return orderId;
     }
 
-    public int getPrice() {
+    public double getPrice() {
         return price;
     }
 
