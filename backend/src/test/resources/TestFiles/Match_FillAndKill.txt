@@ -1,3 +1,3 @@
-A B GoodTillCancel 100 10 1
-A S FillAndKill 100 10 2
+A B GTC 100.250 10 1
+A S IOC 100.250 10 2
 R 0 0 0

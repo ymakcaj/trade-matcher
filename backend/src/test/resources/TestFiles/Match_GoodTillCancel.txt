@@ -1,3 +1,3 @@
-A B GoodTillCancel 100 10 1
-A S GoodTillCancel 100 10 2
+A B GTC 100.500 10 1
+A S GTC 100.500 10 2
 R 0 0 0

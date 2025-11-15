@@ -1,15 +1,15 @@
-A B GoodTillCancel 101 50 1
-A B GoodTillCancel 100 75 2
-A S GoodTillCancel 103 40 3
-A S GoodTillCancel 102 30 4
-A B FillOrKill 102 20 5
-A S Market 0 40 6
-A B GoodTillCancel 103 50 7
-A S GoodTillCancel 101 15 8
+A B GTC 101.250 50 1
+A B GTC 100.750 75 2
+A S GTC 103.125 40 3
+A S GTC 102.875 30 4
+A B FOK 102.500 20 5
+A S MARKET 0 40 6
+A B GTC 103.250 50 7
+A S GTC 101.375 15 8
 M 2 B 102 75
-A S GoodTillCancel 102 30 9
-A S GoodTillCancel 105 20 10
-A B FillAndKill 105 20 11
-A S GoodTillCancel 102 20 12
-A B GoodTillCancel 99 100 13
+A S GTC 102.625 30 9
+A S GTC 105.250 20 10
+A B IOC 105.375 20 11
+A S GTC 102.250 20 12
+A B GTC 99.125 100 13
 R 2 2 0

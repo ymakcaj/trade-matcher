@@ -1,12 +1,12 @@
-A B GoodTillCancel 100 10 1
-A B GoodTillCancel 101 10 2
-A B GoodTillCancel 102 10 3
-A B GoodTillCancel 103 10 4
-A B GoodTillCancel 104 10 5
-A B GoodTillCancel 105 10 6
-A B GoodTillCancel 106 10 7
-A B GoodTillCancel 107 10 8
-A B GoodTillCancel 108 10 9
-A B GoodTillCancel 109 10 10
-A S Market 0 101 11
+A B GTC 100.000 10 1
+A B GTC 101.000 10 2
+A B GTC 102.000 10 3
+A B GTC 103.000 10 4
+A B GTC 104.000 10 5
+A B GTC 105.000 10 6
+A B GTC 106.000 10 7
+A B GTC 107.000 10 8
+A B GTC 108.000 10 9
+A B GTC 109.000 10 10
+A S MARKET 0 101 11
 R 1 0 1
