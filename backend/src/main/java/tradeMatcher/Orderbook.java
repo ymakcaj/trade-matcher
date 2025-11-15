@@ -130,7 +130,7 @@ public final class Orderbook implements AutoCloseable {
         }
 
         Order order = entry.order;
-    NavigableMap<Integer, Deque<Order>> book = order.GetSide() == OrderSide.SELL ? asks : bids;
+        NavigableMap<Integer, Deque<Order>> book = order.GetSide() == OrderSide.SELL ? asks : bids;
         Deque<Order> ordersAtPrice = book.get(priceKey(order));
         if (ordersAtPrice != null) {
             ordersAtPrice.remove(order);
@@ -283,8 +283,20 @@ public final class Orderbook implements AutoCloseable {
                 }
 
                 trades.add(new Trade(
-                    new TradeInfo(bid.GetOrderId(), displayPrice(priceKey(bid), bid), quantity),
-                    new TradeInfo(ask.GetOrderId(), displayPrice(priceKey(ask), ask), quantity)));
+                    new TradeInfo(
+                        bid.GetOrderId(),
+                        bid.getUserId(),
+                        bid.getTicker(),
+                        OrderSide.BUY,
+                        displayPrice(priceKey(bid), bid),
+                        quantity),
+                    new TradeInfo(
+                        ask.GetOrderId(),
+                        ask.getUserId(),
+                        ask.getTicker(),
+                        OrderSide.SELL,
+                        displayPrice(priceKey(ask), ask),
+                        quantity)));
 
                 OnOrderMatched(priceKey(bid), quantity, bid.IsFilled());
                 OnOrderMatched(priceKey(ask), quantity, ask.IsFilled());
@@ -405,6 +417,36 @@ public final class Orderbook implements AutoCloseable {
         }
     }
 
+    public Order findOrder(long orderId) {
+        ordersLock.lock();
+        try {
+            OrderEntry entry = orders.get(orderId);
+            return entry != null ? entry.order : null;
+        } finally {
+            ordersLock.unlock();
+        }
+    }
+
+    public Integer getBestBidPriceKey() {
+        ordersLock.lock();
+        try {
+            Map.Entry<Integer, Deque<Order>> entry = bids.firstEntry();
+            return entry != null ? entry.getKey() : null;
+        } finally {
+            ordersLock.unlock();
+        }
+    }
+
+    public Integer getBestAskPriceKey() {
+        ordersLock.lock();
+        try {
+            Map.Entry<Integer, Deque<Order>> entry = asks.firstEntry();
+            return entry != null ? entry.getKey() : null;
+        } finally {
+            ordersLock.unlock();
+        }
+    }
+
     public OrderbookLevelInfos GetOrderInfos() {
         ordersLock.lock();
         try {
@@ -442,6 +484,8 @@ public final class Orderbook implements AutoCloseable {
             for (Order order : entry.getValue()) {
                 details.add(new OrderDetails(
                     order.GetOrderId(),
+                    order.getUserId(),
+                    order.getTicker(),
                     order.GetSide(),
                     order.GetOrderType(),
                     displayPrice(priceKey(order), order),

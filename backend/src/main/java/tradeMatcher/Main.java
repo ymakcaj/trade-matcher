@@ -11,31 +11,42 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import org.eclipse.jetty.websocket.api.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class Main {
-    // 1. A set to hold all connected WebSocket clients
-    private static final ConcurrentHashMap<Session, String> webSocketClients = new ConcurrentHashMap<>();
     private static final Gson JSON = new Gson();
     private static final Logger LOG = LoggerFactory.getLogger(Main.class);
     private static final PriceScaleRegistry PRICE_SCALES = PriceScaleProvider.getRegistry();
+    private static final String DEFAULT_TICKER = "TEST";
+    private static final String ADMIN_USER_ID = "admin";
+    private static final List<Map<String, Object>> INSTRUMENTS = List.of(
+            Map.of("ticker", DEFAULT_TICKER, "tickSize", 0.001d, "minOrderQty", 1L),
+            Map.of("ticker", "DEMO", "tickSize", 0.001d, "minOrderQty", 1L));
+    private static final Map<String, String> MARKET_STATUS = Map.of("sessionStatus", "OPEN");
 
     public static void main(String[] args) {
-        // This is your matching engine!
-        MatchingEngine engine = new MatchingEngine();
+        AccountManager accountManager = new AccountManager();
+        accountManager.registerAccount(ADMIN_USER_ID, 5_000_000d,
+                Map.of(DEFAULT_TICKER, 1_000_000L, "DEMO", 1_000_000L), true);
+        accountManager.registerAccount("alpha", 250_000d, Map.of(DEFAULT_TICKER, 10_000L), false);
+        accountManager.registerAccount("beta", 250_000d, Map.of(DEFAULT_TICKER, 10_000L), false);
 
-        // 2. Set up a "listener" on your engine.
-        // When your engine has an update, it will call this lambda.
-        // This is the "bridge" between your engine and your UI.
-        engine.onOrderBookUpdate(orderBookJson -> broadcastToClients(orderBookJson));
+        LOG.info("Provisioned demo accounts:");
+        for (UserAccount account : accountManager.getAllAccounts()) {
+            LOG.info("user={} token={}", account.getUserId(), account.getApiKey());
+        }
 
-        engine.onTrades(tradesJson -> broadcastToClients(tradesJson));
+        MatchingEngine engine = new MatchingEngine(accountManager);
+        PublicFeedService publicFeed = new PublicFeedService();
+        PrivateFeedService privateFeed = new PrivateFeedService();
+        AuthService authService = new AuthService(accountManager);
+
+        engine.onOrderBookUpdate(levels -> publicFeed.broadcastDelta(DEFAULT_TICKER, levels));
+        engine.onTrades(trades -> publicFeed.broadcastTrades(DEFAULT_TICKER, trades));
+        engine.onFill(privateFeed::sendFill);
 
         int port = resolvePort();
 
@@ -72,6 +83,7 @@ public class Main {
         // 4. Define the HTTP "Command" Endpoint
         // This is how the user SUBMITS an order
         app.post("/api/order", ctx -> {
+            UserAccount user = authService.requireUser(ctx);
             OrderPayload payload = ctx.bodyValidator(OrderPayload.class)
                     .check(p -> p.orderId() != null && !p.orderId().isBlank(), "orderId is required")
                     .check(p -> p.orderType() != null && !p.orderType().isBlank(), "orderType is required")
@@ -80,24 +92,91 @@ public class Main {
                     .get();
 
             try {
-        Order newOrder = toDomainOrder(payload);
-        PriceScale scale = PRICE_SCALES.getScale(newOrder.getTicker());
-        double displayPrice = scale.toDisplayPrice((int) Math.round(newOrder.GetPrice()));
-        LOG.info("Received order via HTTP: type={}, side={}, price={}, qty={}, id={}",
-            newOrder.GetOrderType(), newOrder.GetSide(), displayPrice,
-            newOrder.GetInitialQuantity(), newOrder.GetOrderId());
+                Order newOrder = toDomainOrder(user.getUserId(), payload);
+                PriceScale scale = PRICE_SCALES.getScale(newOrder.getTicker());
+                double displayPrice = scale.toDisplayPrice((int) Math.round(newOrder.GetPrice()));
+                LOG.info("Received order via HTTP: type={}, side={}, price={}, qty={}, id={}",
+                        newOrder.GetOrderType(), newOrder.GetSide(), displayPrice,
+                        newOrder.GetInitialQuantity(), newOrder.GetOrderId());
 
                 engine.processOrder(newOrder);
-                ctx.json(Collections.singletonMap("status", "Order received"));
+                privateFeed.sendAcknowledgement(user.getUserId(), payload.orderId());
+                ctx.json(Map.of("status", "Order received", "orderId", payload.orderId()));
             } catch (IllegalArgumentException ex) {
                 LOG.warn("Rejected order payload {}: {}", payload, ex.getMessage());
+                privateFeed.sendReject(user.getUserId(), payload.orderId(), ex.getMessage());
                 ctx.status(400).json(Map.of(
                         "status", "error",
                         "message", ex.getMessage()));
             }
         });
 
+        app.delete("/api/order/:orderId", ctx -> {
+            UserAccount user = authService.requireUser(ctx);
+            long orderId;
+            try {
+                orderId = Long.parseLong(ctx.pathParam("orderId"));
+            } catch (NumberFormatException ex) {
+                ctx.status(400).json(Map.of("status", "error", "message", "INVALID_ORDER_ID"));
+                return;
+            }
+            boolean canceled = engine.cancelOrder(user.getUserId(), orderId);
+            if (canceled) {
+                privateFeed.sendCanceled(user.getUserId(), Long.toString(orderId));
+                ctx.json(Map.of("status", "Canceled", "orderId", orderId));
+            } else {
+                ctx.status(404).json(Map.of("status", "error", "message", "ORDER_NOT_FOUND"));
+            }
+        });
+
+        app.get("/api/account", ctx -> {
+            UserAccount user = authService.requireUser(ctx);
+            List<Map<String, Object>> positions = new ArrayList<>();
+            user.snapshotPositions().forEach((ticker, qty) -> positions.add(Map.of(
+                    "ticker", ticker,
+                    "quantity", qty)));
+            ctx.json(Map.of(
+                    "userId", user.getUserId(),
+                    "cash", user.getCashBalance(),
+                    "positions", positions));
+        });
+
+        app.get("/api/orders", ctx -> {
+            UserAccount user = authService.requireUser(ctx);
+            List<Map<String, Object>> orders = new ArrayList<>();
+            for (OrderDetails detail : engine.getOpenOrdersForUser(user.getUserId())) {
+                orders.add(Map.of(
+                        "orderId", detail.getOrderId(),
+                        "ticker", detail.getTicker(),
+                        "side", detail.getSide().name(),
+                        "orderType", detail.getOrderType().name(),
+                        "price", detail.getPrice(),
+                        "quantity", detail.getRemainingQuantity()));
+            }
+            ctx.json(orders);
+        });
+
+        app.get("/api/fills", ctx -> {
+            UserAccount user = authService.requireUser(ctx);
+            List<Map<String, Object>> fills = new ArrayList<>();
+            for (FillRecord fill : engine.getFillsForUser(user.getUserId())) {
+                fills.add(Map.of(
+                        "fillId", fill.fillId(),
+                        "orderId", fill.orderId(),
+                        "ticker", fill.ticker(),
+                        "side", fill.side().name(),
+                        "price", fill.price(),
+                        "quantity", fill.quantity(),
+                        "timestamp", fill.timestamp().toString()));
+            }
+            ctx.json(fills);
+        });
+
+        app.get("/api/instruments", ctx -> ctx.json(INSTRUMENTS));
+        app.get("/api/market/status", ctx -> ctx.json(MARKET_STATUS));
+
         app.post("/api/script", ctx -> {
+            UserAccount admin = authService.requireAdmin(ctx);
             String rawBody = ctx.body();
             LOG.debug("Received raw script payload: {}", rawBody);
 
@@ -121,7 +200,7 @@ public class Main {
                 String trimmed = command.trim();
                 LOG.info("Executing script line: {}", trimmed);
                 try {
-                    executeScriptLine(engine, trimmed);
+                    executeScriptLine(engine, admin.getUserId(), trimmed);
                     executed++;
                 } catch (IllegalArgumentException ex) {
                     LOG.warn("Failed to execute script line '{}': {}", trimmed, ex.getMessage());
@@ -138,42 +217,36 @@ public class Main {
         });
 
         app.post("/api/reset", ctx -> {
+            authService.requireAdmin(ctx);
             LOG.info("Received reset request");
             engine.reset();
             ctx.json(Map.of("status", "Reset complete"));
         });
 
-        // 5. Define the WebSocket "Data" Endpoint
-        // This is how the user OBSERVES the market
-        app.ws("/ws/orderbook", ws -> {
+        app.ws("/ws/public", ws -> {
             ws.onConnect(ctx -> {
-                System.out.println("Client connected");
-                webSocketClients.put(ctx.session, "user");
-                
-                // When a new client connects, send them the current state
-                ctx.send(engine.getCurrentOrderBookAsJson()); 
+                publicFeed.register(ctx.session);
+                publicFeed.sendSnapshot(ctx.session, DEFAULT_TICKER, engine.getOrderbookLevels());
             });
+            ws.onClose(ctx -> publicFeed.unregister(ctx.session));
+        });
 
-            ws.onMessage(ctx -> {
-                // We don't expect messages, but you could add them
+        app.ws("/ws/private", ws -> {
+            ws.onConnect(ctx -> {
+                String token = ctx.queryParam("token");
+                UserAccount account = accountManager.findByToken(token).orElse(null);
+                if (account == null) {
+                    ctx.session.close(4001, "Unauthorized");
+                    return;
+                }
+                ctx.attribute("userId", account.getUserId());
+                privateFeed.register(ctx.session, account.getUserId());
             });
 
             ws.onClose(ctx -> {
-                System.out.println("Client disconnected");
-                webSocketClients.remove(ctx.session);
+                String userId = ctx.attribute("userId");
+                privateFeed.unregister(ctx.session, userId);
             });
-        });
-    }
-
-    private static void broadcastToClients(String payload) {
-        webSocketClients.keySet().removeIf(session -> {
-            try {
-                session.getRemote().sendString(payload);
-                return false;
-            } catch (Exception e) {
-                LOG.error("Failed to send payload to client", e);
-                return true;
-            }
         });
     }
 
@@ -189,7 +262,7 @@ public class Main {
         return 7070;
     }
 
-    private static void executeScriptLine(MatchingEngine engine, String command) {
+    private static void executeScriptLine(MatchingEngine engine, String userId, String command) {
         String[] tokens = command.split("\\s+");
         if (tokens.length == 0) {
             return;
@@ -200,24 +273,24 @@ public class Main {
                 if (tokens.length < 6) {
                     throw new IllegalArgumentException("Add command requires 6 tokens");
                 }
-        ParsedOrderAttributes scriptAttributes = resolveOrderAttributes(tokens[2], null);
-        OrderSide scriptSide = parseSide(tokens[1]);
-        long scriptQuantity = Long.parseLong(tokens[4]);
-        double scriptPrice = Double.parseDouble(tokens[3]);
-        String scriptOrderId = tokens[5];
-        PriceScale scale = PRICE_SCALES.getScale("DEMO");
-        int bookPrice = scriptAttributes.orderType() == OrderType.MARKET ? 0 : scale.toBookPrice(scriptPrice);
-        int bookTrigger = bookPrice;
+                ParsedOrderAttributes scriptAttributes = resolveOrderAttributes(tokens[2], null);
+                OrderSide scriptSide = parseSide(tokens[1]);
+                long scriptQuantity = Long.parseLong(tokens[4]);
+                double scriptPrice = Double.parseDouble(tokens[3]);
+                String scriptOrderId = tokens[5];
+                PriceScale scale = PRICE_SCALES.getScale("DEMO");
+                int bookPrice = scriptAttributes.orderType() == OrderType.MARKET ? 0 : scale.toBookPrice(scriptPrice);
+                int bookTrigger = bookPrice;
                 engine.processOrder(new Order(
                         scriptOrderId,
-                        "script",
+                        userId,
                         "DEMO",
                         scriptSide,
                         scriptAttributes.orderType(),
                         scriptAttributes.timeInForce(),
                         scriptQuantity,
-            bookPrice,
-            bookTrigger,
+                        bookPrice,
+                        bookTrigger,
                         false,
                         scriptQuantity));
                 break;
@@ -225,11 +298,12 @@ public class Main {
                 if (tokens.length < 5) {
                     throw new IllegalArgumentException("Modify command requires 5 tokens");
                 }
-        PriceScale modifyScale = PRICE_SCALES.getScale("DEMO");
+                PriceScale modifyScale = PRICE_SCALES.getScale("DEMO");
                 engine.modifyOrder(
+                        userId,
                         Long.parseLong(tokens[1]),
                         parseSide(tokens[2]),
-            modifyScale.toBookPrice(Double.parseDouble(tokens[3])),
+                        modifyScale.toBookPrice(Double.parseDouble(tokens[3])),
                         Integer.parseInt(tokens[4]));
                 break;
             case 'R':
@@ -237,18 +311,18 @@ public class Main {
                 if (tokens.length < 2) {
                     throw new IllegalArgumentException("Cancel command requires an order id");
                 }
-                engine.cancelOrder(Long.parseLong(tokens[1]));
+                engine.cancelOrder(userId, Long.parseLong(tokens[1]));
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported script code '" + code + "'");
         }
     }
 
-    private static Order toDomainOrder(OrderPayload payload) {
-    ParsedOrderAttributes attributes = resolveOrderAttributes(payload.orderType(), payload.timeInForce());
-    OrderType type = attributes.orderType();
-    TimeInForce timeInForce = attributes.timeInForce();
-    OrderSide side = parseSide(payload.side());
+    private static Order toDomainOrder(String userId, OrderPayload payload) {
+        ParsedOrderAttributes attributes = resolveOrderAttributes(payload.orderType(), payload.timeInForce());
+        OrderType type = attributes.orderType();
+        TimeInForce timeInForce = attributes.timeInForce();
+        OrderSide side = parseSide(payload.side());
 
         Long quantityValue = payload.quantity();
         if (quantityValue == null || quantityValue <= 0) {
@@ -259,7 +333,7 @@ public class Main {
         double price = payload.price() != null ? payload.price() : 0.0;
         double triggerPrice = payload.triggerPrice() != null ? payload.triggerPrice() : price;
 
-        String ticker = payload.ticker() != null && !payload.ticker().isBlank() ? payload.ticker() : "TEST";
+        String ticker = payload.ticker() != null && !payload.ticker().isBlank() ? payload.ticker().toUpperCase() : DEFAULT_TICKER;
         PriceScale scale = PRICE_SCALES.getScale(ticker);
 
         if ((type == OrderType.LIMIT || type == OrderType.STOP_LIMIT) && price <= 0.0) {
@@ -284,13 +358,10 @@ public class Main {
             throw new IllegalArgumentException("orderId is required");
         }
 
-        String userId = payload.userId() != null && !payload.userId().isBlank() ? payload.userId() : "web-client";
-        String tickerResolved = ticker;
-
         return new Order(
                 orderId,
                 userId,
-                tickerResolved,
+                ticker,
                 side,
                 type,
                 timeInForce,
@@ -377,7 +448,7 @@ public class Main {
     }
 
     private static String normalizeToken(String token) {
-    return token.replace("_", "").replace("-", "").replace(" ", "").toUpperCase();
+        return token.replace("_", "").replace("-", "").replace(" ", "").toUpperCase();
     }
 
     private record ParsedOrderAttributes(OrderType orderType, TimeInForce timeInForce) {
@@ -445,7 +516,6 @@ public class Main {
 
     private record OrderPayload(
         String orderId,
-        String userId,
         String ticker,
         String orderType,
         String timeInForce,

@@ -257,11 +257,13 @@ final class OrderbookTests {
                 false,
                 action.quantity()));
             }
-                    case Modify -> orderbook.ModifyOrder(new OrderModify(
-                            action.orderId(),
+            case Modify -> orderbook.ModifyOrder(new OrderModify(
+                action.orderId(),
+                "unit-test",
+                "TEST",
                 Objects.requireNonNull(action.side(), "Missing side"),
                 PriceScaleProvider.getRegistry().getScale("TEST").toBookPrice(action.price()),
-                            action.quantity()));
+                action.quantity()));
                     case Cancel -> orderbook.CancelOrder(action.orderId());
                     default -> throw new IllegalStateException("Unsupported action: " + action.type());
                 }

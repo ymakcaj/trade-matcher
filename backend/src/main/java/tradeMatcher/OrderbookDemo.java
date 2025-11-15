@@ -119,17 +119,17 @@ public final class OrderbookDemo {
             throw new IllegalArgumentException("Add command requires 6 tokens");
         }
 
-    OrderSide side = parseSide(tokens[1]);
-    ParsedOrderSpec spec = parseOrderSpec(tokens[2]);
-    double price = parseDouble(tokens[3], "price");
+        OrderSide side = parseSide(tokens[1]);
+        ParsedOrderSpec spec = parseOrderSpec(tokens[2]);
+        double price = parseDouble(tokens[3], "price");
         int quantity = parseInt(tokens[4], "quantity");
         long orderId = parseOrderId(tokens[5]);
 
-    PriceScale scale = PRICE_SCALES.getScale("DEMO");
-    int bookPrice = spec.orderType() == OrderType.MARKET ? 0 : scale.toBookPrice(price);
-    int bookTrigger = (spec.orderType() == OrderType.STOP_MARKET || spec.orderType() == OrderType.STOP_LIMIT)
-        ? scale.toBookPrice(price)
-        : bookPrice;
+        PriceScale scale = PRICE_SCALES.getScale("DEMO");
+        int bookPrice = spec.orderType() == OrderType.MARKET ? 0 : scale.toBookPrice(price);
+        int bookTrigger = (spec.orderType() == OrderType.STOP_MARKET || spec.orderType() == OrderType.STOP_LIMIT)
+                ? scale.toBookPrice(price)
+                : bookPrice;
 
         if (verboseMode) {
             System.out.printf("ORDER SUBMIT orderId=%d side=%s type=%s price=%d qty=%d%n",
@@ -140,18 +140,18 @@ public final class OrderbookDemo {
                     quantity);
         }
 
-        Order order = new Order(
-                String.valueOf(orderId),
-                "demo-cli",
-                "DEMO",
-                side,
-                spec.orderType(),
-                spec.timeInForce(),
-                quantity,
+    Order order = new Order(
+        String.valueOf(orderId),
+        "demo-cli",
+        "DEMO",
+        side,
+        spec.orderType(),
+        spec.timeInForce(),
+        quantity,
         bookPrice,
         bookTrigger,
-                false,
-                quantity);
+        false,
+        quantity);
 
         List<Trade> trades = orderbook.AddOrder(order);
         if (logTrades(orderbook, trades)) {
@@ -191,14 +191,14 @@ public final class OrderbookDemo {
         }
 
         long orderId = parseOrderId(tokens[1]);
-    OrderSide side = parseSide(tokens[2]);
-    double price = parseDouble(tokens[3], "price");
+        OrderSide side = parseSide(tokens[2]);
+        double price = parseDouble(tokens[3], "price");
         int quantity = parseInt(tokens[4], "quantity");
 
-    PriceScale scale = PRICE_SCALES.getScale("DEMO");
-    int bookPrice = scale.toBookPrice(price);
+        PriceScale scale = PRICE_SCALES.getScale("DEMO");
+        int bookPrice = scale.toBookPrice(price);
 
-    List<Trade> trades = orderbook.ModifyOrder(new OrderModify(orderId, side, bookPrice, quantity));
+        List<Trade> trades = orderbook.ModifyOrder(new OrderModify(orderId, "demo-cli", "DEMO", side, bookPrice, quantity));
         if (logTrades(orderbook, trades)) {
             return null;
         }
