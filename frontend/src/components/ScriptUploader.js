@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 
-function ScriptUploader({ onSubmitScript }) {
+function ScriptUploader({ onSubmitScript, disabled }) {
     const [scriptText, setScriptText] = useState('');
     const [showHelp, setShowHelp] = useState(false);
 
     const handleFileChange = (event) => {
+        if (disabled) {
+            return;
+        }
         const file = event.target.files[0];
         if (file) {
             const reader = new FileReader();
@@ -16,6 +19,9 @@ function ScriptUploader({ onSubmitScript }) {
     };
 
     const handleSubmit = () => {
+        if (disabled) {
+            return;
+        }
         const script = scriptText.split('\n').filter(line => line.trim() !== '');
         onSubmitScript(script);
     };
@@ -30,6 +36,7 @@ function ScriptUploader({ onSubmitScript }) {
                     onClick={() => setShowHelp((prev) => !prev)}
                     aria-expanded={showHelp}
                     aria-controls="script-format-help"
+                    disabled={disabled}
                 >
                     i
                 </button>
@@ -52,11 +59,12 @@ function ScriptUploader({ onSubmitScript }) {
                 value={scriptText}
                 onChange={(e) => setScriptText(e.target.value)}
                 placeholder="Paste your script here or upload a file."
+                disabled={disabled}
             />
             <div className="script-uploader-actions">
-                <input type="file" accept=".txt" onChange={handleFileChange} style={{ display: 'none' }} id="file-input" />
-                <label htmlFor="file-input" className="button-like">Load from File</label>
-                <button onClick={handleSubmit} disabled={!scriptText.trim()}>Run Script</button>
+                <input type="file" accept=".txt" onChange={handleFileChange} style={{ display: 'none' }} id="file-input" disabled={disabled} />
+                <label htmlFor="file-input" className={`button-like${disabled ? ' disabled' : ''}`}>Load from File</label>
+                <button onClick={handleSubmit} disabled={!scriptText.trim() || disabled}>Run Script</button>
             </div>
         </div>
     );

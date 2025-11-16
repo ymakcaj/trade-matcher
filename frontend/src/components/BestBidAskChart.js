@@ -17,12 +17,12 @@ const formatTime = (time) => new Date(time).toLocaleTimeString('en-GB', {
   second: '2-digit'
 });
 
-const DotMarker = ({ cx, cy, fill = '#111', radius = 3 }) => {
+const DotMarker = ({ cx, cy, fill = '#111', radius = 3, stroke = '#111' }) => {
   if (typeof cx !== 'number' || typeof cy !== 'number') {
     return null;
   }
 
-  return <circle cx={cx} cy={cy} r={radius} fill={fill} />;
+  return <circle cx={cx} cy={cy} r={radius} fill={fill} stroke={stroke} strokeWidth={1} />;
 };
 
 function BestBidAskChart({ data, trades = [] }) {
@@ -33,13 +33,21 @@ function BestBidAskChart({ data, trades = [] }) {
 
   const tradeMarkers = useMemo(() => trades
     .filter((trade) => typeof trade.price === 'number' && typeof trade.timestamp === 'number')
-    .map((trade) => ({
-      x: trade.timestamp,
-      y: trade.price,
-      quantity: trade.quantity,
-      bidOrderId: trade.bidOrderId,
-      askOrderId: trade.askOrderId
-    })), [trades]);
+    .map((trade) => {
+      const baseColor = trade.viewerRole === 'bid' ? '#2abf77'
+        : trade.viewerRole === 'ask' ? '#ff6f61'
+        : '#666';
+      return {
+        x: trade.timestamp,
+        y: trade.price,
+        quantity: trade.quantity,
+        bidOrderId: trade.bidOrderId,
+        askOrderId: trade.askOrderId,
+        viewerRole: trade.viewerRole,
+        fill: baseColor,
+        stroke: baseColor
+      };
+    }), [trades]);
 
   if (!chartData.length) {
     return (
@@ -66,6 +74,7 @@ function BestBidAskChart({ data, trades = [] }) {
           <div>Quantity: {trade.quantity ?? '—'}</div>
           <div>Buy Order: {trade.bidOrderId ?? '—'}</div>
           <div>Sell Order: {trade.askOrderId ?? '—'}</div>
+              <div>Your Role: {trade.viewerRole ? trade.viewerRole.toUpperCase() : '—'}</div>
         </div>
       );
     }
@@ -106,8 +115,7 @@ function BestBidAskChart({ data, trades = [] }) {
             name="Trades"
             data={tradeMarkers}
             dataKey="y"
-            fill="#111"
-            shape={(props) => <DotMarker {...props} />}
+            shape={(props) => <DotMarker {...props} fill={props.payload.fill} stroke={props.payload.stroke} />}
             isAnimationActive={false}
           />
         </ComposedChart>

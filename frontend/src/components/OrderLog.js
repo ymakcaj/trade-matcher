@@ -26,24 +26,26 @@ function OrderLog({ events }) {
         <thead>
           <tr>
             <th>Time</th>
-            <th>Action</th>
+            <th>Status</th>
             <th>Order ID</th>
             <th>Side</th>
             <th>Type</th>
             <th>Price</th>
             <th>Quantity</th>
+            <th>Message</th>
           </tr>
         </thead>
         <tbody>
           {items.map((event, idx) => (
-            <tr key={`${event.timestamp}-${event.order?.orderId ?? idx}`}>
+            <tr key={`${event.timestamp}-${event.orderId ?? idx}`} className={event.severity ? `event-${event.severity}` : ''}>
               <td>{formatTime(event.timestamp)}</td>
-              <td>{event.type}</td>
-              <td>{event.order?.orderId ?? '—'}</td>
-              <td>{event.order?.side ?? '—'}</td>
-              <td>{event.order?.orderType ?? '—'}</td>
-              <td>{event.order?.price ?? '—'}</td>
-              <td>{event.order?.quantity ?? '—'}</td>
+              <td>{event.phase}</td>
+              <td>{event.orderId ?? '—'}</td>
+              <td>{event.side ?? '—'}</td>
+              <td>{event.orderType ?? '—'}</td>
+              <td>{event.price ?? '—'}</td>
+              <td>{event.quantity ?? '—'}</td>
+              <td>{event.message ?? '—'}</td>
             </tr>
           ))}
         </tbody>
