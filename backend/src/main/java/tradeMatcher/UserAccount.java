@@ -17,14 +17,27 @@ public final class UserAccount {
     private double cashBalance;
 
     public static UserAccount create(String userId, double startingCash, Map<String, Long> startingPositions, boolean admin) {
+        return createWithGeneratedApiKey(userId, startingCash, startingPositions, admin);
+    }
+
+    public static UserAccount createWithGeneratedApiKey(String userId, double startingCash, Map<String, Long> startingPositions, boolean admin) {
+        return createWithApiKey(userId, generateApiKey(), startingCash, startingPositions, admin);
+    }
+
+    public static UserAccount createWithApiKey(String userId, String apiKey, double startingCash, Map<String, Long> startingPositions, boolean admin) {
         Objects.requireNonNull(userId, "userId");
-        UserAccount account = new UserAccount(userId, generateApiKey(), admin);
+        Objects.requireNonNull(apiKey, "apiKey");
+        if (apiKey.isBlank()) {
+            throw new IllegalArgumentException("apiKey cannot be blank");
+        }
+        UserAccount account = new UserAccount(userId, apiKey, admin);
         account.cashBalance = startingCash;
         if (startingPositions != null) {
             startingPositions.forEach((ticker, qty) -> {
-                if (qty != null && qty != 0L) {
-                    account.positions.put(ticker.toUpperCase(), qty);
+                if (ticker == null || qty == null || qty == 0L) {
+                    return;
                 }
+                account.positions.put(ticker.toUpperCase(), qty);
             });
         }
         return account;

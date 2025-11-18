@@ -37,19 +37,27 @@ public final class PrivateFeedService {
         });
     }
 
-    public void sendAcknowledgement(String userId, String orderId) {
-        send(userId, Map.of(
-                "type", "ACK",
-                "orderId", orderId,
-                "timestamp", Instant.now().toString()));
+    public void sendAcknowledgement(String userId, String orderId, String clientOrderId) {
+        Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "ACK");
+        payload.put("orderId", orderId);
+        if (clientOrderId != null && !clientOrderId.isBlank()) {
+            payload.put("clientOrderId", clientOrderId);
+        }
+        payload.put("timestamp", Instant.now().toString());
+        send(userId, payload);
     }
 
-    public void sendReject(String userId, String orderId, String reason) {
-        send(userId, Map.of(
-                "type", "REJECT",
-                "orderId", orderId,
-                "reason", reason,
-                "timestamp", Instant.now().toString()));
+    public void sendReject(String userId, String orderId, String clientOrderId, String reason) {
+        Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("type", "REJECT");
+        payload.put("orderId", orderId);
+        if (clientOrderId != null && !clientOrderId.isBlank()) {
+            payload.put("clientOrderId", clientOrderId);
+        }
+        payload.put("reason", reason);
+        payload.put("timestamp", Instant.now().toString());
+        send(userId, payload);
     }
 
     public void sendFill(FillRecord fill) {

@@ -96,6 +96,43 @@ function AppRoot() {
 
   const bookRef = useRef({ bids: new Map(), asks: new Map() });
   const pendingOrdersRef = useRef(new Map());
+  const clientOrderSeqRef = useRef(1);
+
+  const generateClientOrderId = useCallback(() => {
+    const seq = clientOrderSeqRef.current++;
+    const base = Date.now().toString(36);
+    return `TMP-${base}-${seq.toString(36)}`;
+  }, []);
+
+  const rekeyPendingOrder = useCallback((fromKey, toKey) => {
+    if (!fromKey || !toKey) {
+      return;
+    }
+    const source = pendingOrdersRef.current.get(fromKey);
+    if (!source) {
+      return;
+    }
+    const payload = {
+      ...source,
+      orderId: toKey,
+      serverOrderId: toKey,
+      clientOrderId: source.clientOrderId ?? fromKey
+    };
+    pendingOrdersRef.current.set(toKey, payload);
+    if (fromKey !== toKey) {
+      pendingOrdersRef.current.delete(fromKey);
+    }
+  }, []);
+
+  const removePendingOrder = useCallback((...keys) => {
+    keys.forEach((key) => {
+      if (!key && key !== 0) {
+        return;
+      }
+      const normalized = String(key);
+      pendingOrdersRef.current.delete(normalized);
+    });
+  }, []);
 
   const apiBase = useMemo(() => resolveApiBase(), []);
   const wsBase = useMemo(() => toWebSocketBase(apiBase), [apiBase]);
@@ -246,11 +283,26 @@ function AppRoot() {
     if (!orderId) {
       return null;
     }
-    const fromPending = pendingOrdersRef.current.get(orderId);
+    const key = String(orderId);
+    const fromPending = pendingOrdersRef.current.get(key);
     if (fromPending) {
       return fromPending;
     }
-    return openOrders.find((order) => String(order.orderId) === String(orderId)) ?? null;
+    for (const value of pendingOrdersRef.current.values()) {
+      if (!value) {
+        continue;
+      }
+      if (value.orderId && String(value.orderId) === key) {
+        return value;
+      }
+      if (value.clientOrderId && String(value.clientOrderId) === key) {
+        return value;
+      }
+      if (value.serverOrderId && String(value.serverOrderId) === key) {
+        return value;
+      }
+    }
+    return openOrders.find((order) => String(order.orderId) === key) ?? null;
   }, [openOrders]);
 
   const buildEventPayload = useCallback((phase, details) => {
@@ -409,33 +461,40 @@ function AppRoot() {
       return;
     }
     const type = payload.type;
-    const orderId = payload.orderId ?? null;
+    const orderId = payload.orderId != null ? String(payload.orderId) : null;
+    const clientOrderId = payload.clientOrderId != null ? String(payload.clientOrderId) : null;
     if (type === 'ACK') {
+      if (clientOrderId && orderId) {
+        rekeyPendingOrder(clientOrderId, orderId);
+      }
+      const identifier = orderId ?? clientOrderId;
       pushEvent(buildEventPayload('ACK', {
-        orderId,
+        orderId: identifier,
         message: 'Order acknowledged',
         severity: 'success'
       }));
-      pendingOrdersRef.current.delete(orderId);
+      removePendingOrder(identifier, clientOrderId, orderId);
       refreshOrders();
       return;
     }
     if (type === 'REJECT') {
+      const identifier = orderId ?? clientOrderId;
       pushEvent(buildEventPayload('REJECT', {
-        orderId,
+        orderId: identifier,
         message: payload.reason ?? 'Order rejected',
         severity: 'error'
       }));
-      pendingOrdersRef.current.delete(orderId);
+      removePendingOrder(identifier, clientOrderId, orderId);
       return;
     }
     if (type === 'CANCELED') {
+      const identifier = orderId ?? clientOrderId;
       pushEvent(buildEventPayload('CANCELED', {
-        orderId,
+        orderId: identifier,
         message: 'Order canceled',
         severity: 'warning'
       }));
-      pendingOrdersRef.current.delete(orderId);
+      removePendingOrder(identifier, clientOrderId, orderId);
       refreshOrders();
       return;
     }
@@ -466,7 +525,7 @@ function AppRoot() {
       refreshOrders();
       return;
     }
-  }, [buildEventPayload, pushEvent, refreshAccount, refreshOrders]);
+  }, [buildEventPayload, pushEvent, refreshAccount, refreshOrders, rekeyPendingOrder, removePendingOrder]);
 
   useEffect(() => {
     if (!authToken) {
@@ -518,11 +577,12 @@ function AppRoot() {
   }, [rawTrades, userAccount?.userId]);
 
   const handleOrderSubmit = useCallback((order) => {
+    const clientOrderId = generateClientOrderId();
     if (!authToken) {
       pushEvent({
         timestamp: Date.now(),
         phase: 'SUBMIT',
-        orderId: order.orderId,
+        orderId: clientOrderId,
         side: order.side,
         orderType: order.orderType,
         price: order.price,
@@ -532,11 +592,19 @@ function AppRoot() {
       });
       return;
     }
-    pendingOrdersRef.current.set(order.orderId, order);
+
+    const pendingPayload = {
+      ...order,
+      orderId: clientOrderId,
+      clientOrderId,
+      serverOrderId: null
+    };
+    pendingOrdersRef.current.set(clientOrderId, pendingPayload);
+
     pushEvent({
       timestamp: Date.now(),
       phase: 'SUBMIT',
-      orderId: order.orderId,
+      orderId: clientOrderId,
       side: order.side,
       orderType: order.orderType,
       price: typeof order.price === 'number' ? order.price.toFixed(3) : order.price,
@@ -544,37 +612,51 @@ function AppRoot() {
       message: 'Submitting order',
       severity: 'info'
     });
+
+  const submission = { ...order, orderId: clientOrderId };
+
     authorizedFetch('/api/order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(order)
-    }).then((response) => {
-      if (response.ok) {
-        return null;
+      body: JSON.stringify(submission)
+    }).then(async (response) => {
+      let body = {};
+      try {
+        body = await response.json();
+      } catch (error) {
+        body = {};
       }
-      return response.json().catch(() => ({})).then((body) => {
+
+      if (!response.ok) {
+        const assignedOrderId = body?.orderId ? String(body.orderId) : null;
         const reason = body?.message ?? `HTTP ${response.status}`;
-        pendingOrdersRef.current.delete(order.orderId);
+        removePendingOrder(clientOrderId, assignedOrderId);
         pushEvent(buildEventPayload('SUBMIT_FAILED', {
-          orderId: order.orderId,
+          orderId: assignedOrderId ?? clientOrderId,
           message: reason,
           severity: 'error'
         }));
-      });
+        return;
+      }
+
+      const assignedOrderId = body?.orderId ? String(body.orderId) : null;
+      if (assignedOrderId) {
+        rekeyPendingOrder(clientOrderId, assignedOrderId);
+      }
     }).catch((error) => {
-      pendingOrdersRef.current.delete(order.orderId);
+      removePendingOrder(clientOrderId);
       if (error.code === 'UNAUTHORIZED') {
         setLastError('Session expired. Please reconnect.');
         handleDisconnect();
       } else {
         pushEvent(buildEventPayload('SUBMIT_FAILED', {
-          orderId: order.orderId,
+          orderId: clientOrderId,
           message: error.message,
           severity: 'error'
         }));
       }
     });
-  }, [authToken, authorizedFetch, buildEventPayload, handleDisconnect, pushEvent]);
+  }, [authToken, authorizedFetch, buildEventPayload, generateClientOrderId, handleDisconnect, pushEvent, rekeyPendingOrder, removePendingOrder]);
 
   const handleScriptSubmit = useCallback((scriptLines) => {
     if (!authToken) {

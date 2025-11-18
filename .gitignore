@@ -70,3 +70,5 @@ Thumbs.db
 .github*
 
 .vscode*
+
+*accounts.json

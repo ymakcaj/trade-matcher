@@ -16,7 +16,6 @@ const TIFS = [
 
 function OrderForm({ onSubmitOrder, disabled, defaultTicker = 'TEST' }) {
   const [formState, setFormState] = useState({
-    orderId: '',
     ticker: defaultTicker,
     side: 'BUY',
     orderType: 'LIMIT',
@@ -47,11 +46,7 @@ function OrderForm({ onSubmitOrder, disabled, defaultTicker = 'TEST' }) {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    const orderId = formState.orderId.trim();
     const ticker = formState.ticker.trim().toUpperCase() || defaultTicker;
-    if (!orderId) {
-      return;
-    }
     const quantity = parseInt(formState.quantity, 10);
     if (!Number.isFinite(quantity) || quantity <= 0) {
       return;
@@ -60,7 +55,6 @@ function OrderForm({ onSubmitOrder, disabled, defaultTicker = 'TEST' }) {
     const safeDisplayQuantity = Number.isFinite(displayQuantity) && displayQuantity > 0 ? displayQuantity : quantity;
 
     const payload = {
-      orderId,
       ticker,
       orderType: formState.orderType,
       timeInForce: formState.timeInForce,
@@ -75,7 +69,6 @@ function OrderForm({ onSubmitOrder, disabled, defaultTicker = 'TEST' }) {
     onSubmitOrder(payload);
     setFormState((prev) => ({
       ...prev,
-      orderId: '',
       price: '',
       triggerPrice: '',
       quantity: '',
@@ -86,18 +79,6 @@ function OrderForm({ onSubmitOrder, disabled, defaultTicker = 'TEST' }) {
   return (
     <form onSubmit={handleSubmit} className="order-form">
       <h3>Submit Order</h3>
-      <div className="form-row">
-        <label htmlFor="order-id">Order ID</label>
-        <input
-          id="order-id"
-          type="text"
-          value={formState.orderId}
-          onChange={handleChange('orderId')}
-          placeholder="Unique identifier"
-          required
-          disabled={disabled}
-        />
-      </div>
       <div className="form-row">
         <label htmlFor="ticker">Ticker</label>
         <input

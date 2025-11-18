@@ -7,11 +7,16 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import io.javalin.Javalin;
 import io.javalin.http.staticfiles.Location;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,20 +34,37 @@ public class Main {
 
     public static void main(String[] args) {
         AccountManager accountManager = new AccountManager();
-        accountManager.registerAccount(ADMIN_USER_ID, 5_000_000d,
-                Map.of(DEFAULT_TICKER, 1_000_000L, "DEMO", 1_000_000L), true);
-        accountManager.registerAccount("alpha", 250_000d, Map.of(DEFAULT_TICKER, 10_000L), false);
-        accountManager.registerAccount("beta", 250_000d, Map.of(DEFAULT_TICKER, 10_000L), false);
+        List<SeedAccount> seedAccounts = loadSeedAccounts();
+        if (seedAccounts.isEmpty()) {
+            accountManager.registerAccount(ADMIN_USER_ID, 5_000_000d,
+                    Map.of(DEFAULT_TICKER, 1_000_000L, "DEMO", 1_000_000L), true);
+            accountManager.registerAccount("alpha", 250_000d, Map.of(DEFAULT_TICKER, 10_000L), false);
+            accountManager.registerAccount("beta", 250_000d, Map.of(DEFAULT_TICKER, 10_000L), false);
+        } else {
+            for (SeedAccount seed : seedAccounts) {
+                try {
+                    accountManager.registerAccountWithApiKey(
+                            seed.userId(),
+                            seed.apiKey(),
+                            seed.cash(),
+                            seed.positions(),
+                            seed.admin());
+                } catch (IllegalArgumentException ex) {
+                    LOG.warn("Failed to register seed account {}: {}", seed.userId(), ex.getMessage());
+                }
+            }
+        }
 
         LOG.info("Provisioned demo accounts:");
         for (UserAccount account : accountManager.getAllAccounts()) {
             LOG.info("user={} token={}", account.getUserId(), account.getApiKey());
         }
 
-        MatchingEngine engine = new MatchingEngine(accountManager);
-        PublicFeedService publicFeed = new PublicFeedService();
-        PrivateFeedService privateFeed = new PrivateFeedService();
-        AuthService authService = new AuthService(accountManager);
+    MatchingEngine engine = new MatchingEngine(accountManager);
+    PublicFeedService publicFeed = new PublicFeedService();
+    PrivateFeedService privateFeed = new PrivateFeedService();
+    AuthService authService = new AuthService(accountManager);
+    OrderIdGenerator orderIdGenerator = new OrderIdGenerator();
 
         engine.onOrderBookUpdate(levels -> publicFeed.broadcastDelta(DEFAULT_TICKER, levels));
         engine.onTrades(trades -> publicFeed.broadcastTrades(DEFAULT_TICKER, trades));
@@ -82,17 +104,19 @@ public class Main {
 
         // 4. Define the HTTP "Command" Endpoint
         // This is how the user SUBMITS an order
-        app.post("/api/order", ctx -> {
+    app.post("/api/order", ctx -> {
             UserAccount user = authService.requireUser(ctx);
             OrderPayload payload = ctx.bodyValidator(OrderPayload.class)
-                    .check(p -> p.orderId() != null && !p.orderId().isBlank(), "orderId is required")
                     .check(p -> p.orderType() != null && !p.orderType().isBlank(), "orderType is required")
                     .check(p -> p.side() != null && !p.side().isBlank(), "side is required")
                     .check(p -> p.quantity() != null && p.quantity() > 0, "quantity must be positive")
                     .get();
 
+        String assignedOrderId = orderIdGenerator.nextId();
+        String clientOrderId = payload.orderId();
+
             try {
-                Order newOrder = toDomainOrder(user.getUserId(), payload);
+        Order newOrder = toDomainOrder(user.getUserId(), payload, assignedOrderId);
                 PriceScale scale = PRICE_SCALES.getScale(newOrder.getTicker());
                 double displayPrice = scale.toDisplayPrice((int) Math.round(newOrder.GetPrice()));
                 LOG.info("Received order via HTTP: type={}, side={}, price={}, qty={}, id={}",
@@ -100,18 +124,29 @@ public class Main {
                         newOrder.GetInitialQuantity(), newOrder.GetOrderId());
 
                 engine.processOrder(newOrder);
-                privateFeed.sendAcknowledgement(user.getUserId(), payload.orderId());
-                ctx.json(Map.of("status", "Order received", "orderId", payload.orderId()));
+                privateFeed.sendAcknowledgement(user.getUserId(), assignedOrderId, clientOrderId);
+                Map<String, Object> response = new java.util.HashMap<>();
+                response.put("status", "Order received");
+                response.put("orderId", assignedOrderId);
+                if (clientOrderId != null && !clientOrderId.isBlank()) {
+                    response.put("clientOrderId", clientOrderId);
+                }
+                ctx.json(response);
             } catch (IllegalArgumentException ex) {
                 LOG.warn("Rejected order payload {}: {}", payload, ex.getMessage());
-                privateFeed.sendReject(user.getUserId(), payload.orderId(), ex.getMessage());
-                ctx.status(400).json(Map.of(
-                        "status", "error",
-                        "message", ex.getMessage()));
+        privateFeed.sendReject(user.getUserId(), assignedOrderId, clientOrderId, ex.getMessage());
+                Map<String, Object> errorBody = new java.util.HashMap<>();
+                errorBody.put("status", "error");
+                errorBody.put("message", ex.getMessage());
+                errorBody.put("orderId", assignedOrderId);
+                if (clientOrderId != null && !clientOrderId.isBlank()) {
+                    errorBody.put("clientOrderId", clientOrderId);
+                }
+                ctx.status(400).json(errorBody);
             }
         });
 
-        app.delete("/api/order/:orderId", ctx -> {
+    app.delete("/api/order/{orderId}", ctx -> {
             UserAccount user = authService.requireUser(ctx);
             long orderId;
             try {
@@ -172,8 +207,23 @@ public class Main {
             ctx.json(fills);
         });
 
-        app.get("/api/instruments", ctx -> ctx.json(INSTRUMENTS));
-        app.get("/api/market/status", ctx -> ctx.json(MARKET_STATUS));
+    app.get("/api/instruments", ctx -> ctx.json(INSTRUMENTS));
+    app.get("/api/market/status", ctx -> ctx.json(MARKET_STATUS));
+    app.get("/api/market/{ticker}/book", ctx -> {
+        String requestedTicker = ctx.pathParam("ticker");
+        if (!isSupportedTicker(requestedTicker)) {
+        ctx.status(404).json(Map.of(
+            "status", "error",
+            "message", "UNKNOWN_TICKER"));
+        return;
+        }
+        String normalizedTicker = normalizeTicker(requestedTicker);
+        OrderbookLevelInfos snapshot = engine.getOrderbookLevels();
+        ctx.json(Map.of(
+            "ticker", normalizedTicker,
+            "bids", snapshot.GetBids(),
+            "asks", snapshot.GetAsks()));
+    });
 
         app.post("/api/script", ctx -> {
             UserAccount admin = authService.requireAdmin(ctx);
@@ -318,7 +368,7 @@ public class Main {
         }
     }
 
-    private static Order toDomainOrder(String userId, OrderPayload payload) {
+    private static Order toDomainOrder(String userId, OrderPayload payload, String assignedOrderId) {
         ParsedOrderAttributes attributes = resolveOrderAttributes(payload.orderType(), payload.timeInForce());
         OrderType type = attributes.orderType();
         TimeInForce timeInForce = attributes.timeInForce();
@@ -353,13 +403,8 @@ public class Main {
             throw new IllegalArgumentException("displayQuantity must be between 1 and the total quantity");
         }
 
-        String orderId = payload.orderId();
-        if (orderId == null || orderId.isBlank()) {
-            throw new IllegalArgumentException("orderId is required");
-        }
-
         return new Order(
-                orderId,
+                assignedOrderId,
                 userId,
                 ticker,
                 side,
@@ -449,6 +494,84 @@ public class Main {
 
     private static String normalizeToken(String token) {
         return token.replace("_", "").replace("-", "").replace(" ", "").toUpperCase();
+    }
+
+    private static boolean isSupportedTicker(String ticker) {
+        if (ticker == null || ticker.isBlank()) {
+            return false;
+        }
+        String normalized = normalizeTicker(ticker);
+        for (Map<String, Object> instrument : INSTRUMENTS) {
+            Object value = instrument.get("ticker");
+            if (value instanceof String existing && normalized.equalsIgnoreCase(existing)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalizeTicker(String ticker) {
+        return ticker == null ? "" : ticker.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static List<SeedAccount> loadSeedAccounts() {
+        try (InputStream stream = Main.class.getResourceAsStream("/accounts.json")) {
+            if (stream == null) {
+                return List.of();
+            }
+            JsonElement root = JSON.fromJson(new InputStreamReader(stream, StandardCharsets.UTF_8), JsonElement.class);
+            if (root == null || !root.isJsonArray()) {
+                LOG.warn("accounts.json must be a JSON array of account definitions");
+                return List.of();
+            }
+            List<SeedAccount> seeds = new ArrayList<>();
+            for (JsonElement element : root.getAsJsonArray()) {
+                if (!element.isJsonObject()) {
+                    continue;
+                }
+                JsonObject object = element.getAsJsonObject();
+                String userId = getOptionalString(object, "userId");
+                String apiKey = getOptionalString(object, "apiKey");
+                if (userId == null || apiKey == null) {
+                    LOG.warn("Skipping seed account with missing userId or apiKey");
+                    continue;
+                }
+                double cash = object.has("cash") ? object.get("cash").getAsDouble() : 0.0d;
+                boolean admin = object.has("admin") && object.get("admin").getAsBoolean();
+                Map<String, Long> positions = extractPositions(object);
+                seeds.add(new SeedAccount(userId, apiKey, cash, positions, admin));
+            }
+            return List.copyOf(seeds);
+        } catch (Exception ex) {
+            LOG.warn("Failed to load accounts.json", ex);
+            return List.of();
+        }
+    }
+
+    private static Map<String, Long> extractPositions(JsonObject object) {
+        if (!object.has("positions") || !object.get("positions").isJsonObject()) {
+            return Map.of();
+        }
+        Map<String, Long> positions = new HashMap<>();
+        for (Map.Entry<String, JsonElement> entry : object.get("positions").getAsJsonObject().entrySet()) {
+            try {
+                positions.put(entry.getKey().toUpperCase(Locale.ROOT), entry.getValue().getAsLong());
+            } catch (NumberFormatException | UnsupportedOperationException ex) {
+                LOG.warn("Invalid position quantity for ticker {}: {}", entry.getKey(), entry.getValue());
+            }
+        }
+        return Map.copyOf(positions);
+    }
+
+    private static String getOptionalString(JsonObject object, String member) {
+        if (object.has(member) && object.get(member).isJsonPrimitive()) {
+            String value = object.get(member).getAsString();
+            return value != null && !value.isBlank() ? value : null;
+        }
+        return null;
+    }
+
+    private record SeedAccount(String userId, String apiKey, double cash, Map<String, Long> positions, boolean admin) {
     }
 
     private record ParsedOrderAttributes(OrderType orderType, TimeInForce timeInForce) {
